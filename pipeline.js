@@ -1,4 +1,10 @@
 import { extension_settings, getContext } from '../../../extensions.js';
+import {
+    CHARACTER_EXPLORER_PROMPT,
+    PLANNER_PROMPT,
+    SCENE_EXPLORER_PROMPT,
+    SYNTHESIZER_PROMPT,
+} from './stage-prompts.js';
 
 const EXTENSION_NAME = 'NemoOrchestrator';
 const LOG_PREFIX = '[NemoOrchestrator]';
@@ -309,7 +315,7 @@ export async function runGremlinPlanningPipeline() {
 
     // --- 1. Planner (The Architect) ---
     const papaInstructionSetting = settings.gremlinPapaInstructions;
-    let blueprintInstruction = (papaInstructionSetting && papaInstructionSetting.trim() !== '') ? papaInstructionSetting : DEFAULT_PAPA_INSTRUCTIONS;
+    let blueprintInstruction = (papaInstructionSetting && papaInstructionSetting.trim() !== '') ? papaInstructionSetting : PLANNER_PROMPT;
     let blueprint = blueprintInstruction; // Initial blueprint is the full instruction for Papa if he's disabled.
     let blueprintSource = 'Base Instructions';
 
@@ -336,10 +342,10 @@ export async function runGremlinPlanningPipeline() {
             window.toastr.warning("Failed to configure environment for Creative Explorers. Skipping creative ideation.", "Nemo Orchestrator");
         } else {
             const vexInstructionBaseSetting = settings.gremlinTwinsVexInstructionsBase;
-            const vexPromptBase = (vexInstructionBaseSetting && vexInstructionBaseSetting.trim() !== '') ? vexInstructionBaseSetting : DEFAULT_TWINS_VEX_INSTRUCTIONS_BASE;
+            const vexPromptBase = (vexInstructionBaseSetting && vexInstructionBaseSetting.trim() !== '') ? vexInstructionBaseSetting : CHARACTER_EXPLORER_PROMPT;
 
             const vaxInstructionBaseSetting = settings.gremlinTwinsVaxInstructionsBase;
-            const vaxPromptBase = (vaxInstructionBaseSetting && vaxInstructionBaseSetting.trim() !== '') ? vaxInstructionBaseSetting : DEFAULT_TWINS_VAX_INSTRUCTIONS_BASE;
+            const vaxPromptBase = (vaxInstructionBaseSetting && vaxInstructionBaseSetting.trim() !== '') ? vaxInstructionBaseSetting : SCENE_EXPLORER_PROMPT;
 
             const numTwinIterations = settings.gremlinTwinsIterations || 3;
 
@@ -370,7 +376,7 @@ export async function runGremlinPlanningPipeline() {
             finalBlueprintForWriter = `**Source Blueprint (${blueprintSource}):**\n${blueprint}\n\n**Twins' Creative Sparks (if any):**\n${twinDeliberations || 'None.'}`;
         } else {
             const mamaInstructionTemplateSetting = settings.gremlinMamaInstructions;
-            let mamaPromptTemplate = (mamaInstructionTemplateSetting && mamaInstructionTemplateSetting.trim() !== '') ? mamaInstructionTemplateSetting : DEFAULT_MAMA_INSTRUCTIONS;
+            let mamaPromptTemplate = (mamaInstructionTemplateSetting && mamaInstructionTemplateSetting.trim() !== '') ? mamaInstructionTemplateSetting : SYNTHESIZER_PROMPT;
 
             // Replace placeholders in the chosen Mama prompt template
             const mamaPrompt = mamaPromptTemplate

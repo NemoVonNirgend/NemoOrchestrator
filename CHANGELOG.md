@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.2.0
+
+### Added
+
+- Optional Fine Control mode with a full-screen visual workflow canvas.
+- Draggable Generation, Join, and Output nodes with visible input/output ports.
+- Click-to-connect branching and reconvergence, including multiple dependency-ready branches.
+- Per-node prompts, presets, APIs, models, custom URLs, and failure policies.
+- Named input placeholders such as `{{planner}}` and aggregate `{{INPUTS}}` injection.
+- Versioned workflow persistence with JSON import, export, and maintained-default reset.
+- Graph validation for cycles, duplicate nodes, disconnected branches, missing prompts, and ambiguous outputs.
+- Runtime node states for running, completed, and failed stages.
+- Canvas zoom, cursor-centered wheel zoom, background panning, fit-to-workflow, and reset-view controls.
+- Fifty-step undo/redo history, node duplication, editable workflow names, and keyboard shortcuts.
+- Dependency step badges that identify sibling nodes as parallel-ready.
+- Context nodes for the latest user message, last assistant message, bounded chat history, character card, and user persona.
+- Template nodes that reshape or label connected material without making another model call.
+- Condition nodes with green true and red false routes, text comparisons, emptiness checks, and regular-expression matching.
+- Inactive-branch propagation so untaken conditional paths are visibly skipped and never spend generation calls.
+- Isolated Connection Manager profile selection and maximum-token controls on Generation nodes.
+- True simultaneous execution for profile-backed sibling Generation nodes in the same dependency batch.
+- Abort propagation from workflow cancellation into active Connection Manager requests.
+
+### Changed
+
+- The existing five-stage configuration remains available as Simple setup and is still the default.
+- Fine Control begins with a maintained Planner → parallel Explorers → Join → Synthesizer → Narrator → Editor graph populated from the user's existing connection and prompt settings.
+- Workflow execution now uses the same transactional connection capture, cancellation, cleanup, and restoration guarantees as Simple setup.
+- Saved version-1 graphs normalize automatically to the version-2 node and edge schema.
+
+### Execution note
+
+- Generation nodes assigned to Connection Manager profiles carry isolated API, model, preset, URL, credentials, and request settings and therefore execute concurrently with profile-backed siblings. Nodes using the legacy/global connection mode remain serialized for safety.
+
 ## 0.1.0
 
 ### Added

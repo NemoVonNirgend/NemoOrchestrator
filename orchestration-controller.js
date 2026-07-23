@@ -20,6 +20,7 @@ export function createOrchestrationController({
     applyStageEnvironment,
     applyWriterChaosEnvironment,
     executeGen,
+    runFineWorkflow,
     notify,
     logger = console,
     random = Math.random,
@@ -28,6 +29,7 @@ export function createOrchestrationController({
     let pendingEnvironment = null;
     let pipelineSequence = 0;
     let finalizationPromise = null;
+    let activePreparationController = null;
 
     async function restorePendingEnvironment() {
         const snapshot = pendingEnvironment;
@@ -67,6 +69,7 @@ export function createOrchestrationController({
 
     async function cancelPipelineAndFinish() {
         pipelineSequence += 1;
+        activePreparationController?.abort(new Error('Orchestration cancelled.'));
         if (pendingEnvironment || finalizationPromise) {
             await finishPipelineGeneration();
             return;
@@ -85,9 +88,15 @@ export function createOrchestrationController({
 
         running = true;
         const sequence = ++pipelineSequence;
+        const abortController = new AbortController();
+        activePreparationController = abortController;
         let snapshot = null;
         const assertActive = () => {
-            if (sequence !== pipelineSequence || !getSettings().enabled) {
+            if (
+                abortController.signal.aborted ||
+                sequence !== pipelineSequence ||
+                !getSettings().enabled
+            ) {
                 const error = new Error('Orchestration was cancelled before preparation finished.');
                 error.name = 'AbortError';
                 throw error;
@@ -100,6 +109,29 @@ export function createOrchestrationController({
             snapshot = await captureEnvironment();
             assertActive();
             await clearInjections();
+
+            if (getSettings().workflowMode === 'fine') {
+                if (typeof runFineWorkflow !== 'function') {
+                    throw new Error('Fine Control workflow execution is unavailable.');
+                }
+                const result = await runFineWorkflow({
+                    workflow: getSettings().visualWorkflow,
+                    assertActive,
+                    signal: abortController.signal,
+                });
+                if (!result?.instruction?.trim()) {
+                    throw new Error('The Fine Control workflow returned no final instruction.');
+                }
+                assertActive();
+                await installInjections(result.instruction);
+                assertActive();
+
+                pendingEnvironment = snapshot;
+                snapshot = null;
+                notify('success', `Workflow prepared through ${result.outputNode?.name || 'Output'}.`);
+                return true;
+            }
+
             const blueprint = await runPlanningPipeline();
             if (!blueprint?.trim()) throw new Error('The planning stages returned no blueprint.');
             assertActive();
@@ -186,6 +218,9 @@ export function createOrchestrationController({
             }
             return false;
         } finally {
+            if (activePreparationController === abortController) {
+                activePreparationController = null;
+            }
             running = false;
             if (snapshot) {
                 try {

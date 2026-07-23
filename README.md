@@ -4,6 +4,39 @@ Nemo Orchestrator is a configurable multi-model narrative pipeline for SillyTave
 
 The extension is disabled by default and does not replace Prose Polisher. Prose Polisher owns repetition analysis and correction rules; Nemo Orchestrator owns planning and staged generation.
 
+## Two Ways to Build
+
+### Simple setup
+
+Simple setup retains the maintained Planner, Creative Explorers, Synthesizer, Writer, and optional Editor configuration. It is the default and requires no graph editing.
+
+### Fine Control
+
+Fine Control exposes the generation pipeline as a visual node graph inspired by visual game-development tools and ComfyUI.
+
+- Drag nodes around the canvas.
+- Pan the background, zoom from 40–160%, or fit the complete graph into view.
+- Click an output port and then an input port to draw a connection.
+- Branch one result into multiple independent stages.
+- Recombine branches with a Join node.
+- Pull selected SillyTavern data into the graph with Context nodes.
+- Route work through green true and red false Condition branches.
+- Reshape connected results with zero-call Template nodes.
+- Use undo/redo, duplicate nodes, and rename the complete workflow.
+- Configure the prompt and connection environment of each generation stage.
+- Choose whether an individual Generation failure aborts the workflow or continues with an empty result.
+- Import or export complete workflows as JSON.
+- Reset to the maintained default graph without changing Simple setup.
+
+Fine Control is opt-in. The first time it is selected, Orchestrator creates this editable workflow from the user's existing settings:
+
+```text
+Planner
+├── Character Explorer ─┐
+└── Scene Explorer ─────┴─ Explorer Join
+Planner ──────────────────┴─ Synthesizer → Narrator → Editor / Final Response
+```
+
 ## Pipeline
 
 1. **Planner** establishes the next response’s direction, continuity requirements, and constraints.
@@ -13,6 +46,96 @@ The extension is disabled by default and does not replace Prose Polisher. Prose 
 5. **Editor** optionally revises the Writer draft without changing its events, characterization, point of view, or meaning.
 
 Planner, Explorer, Synthesizer, and Editor stages can be disabled independently. Explorer failures are nonfatal, and Synthesizer failures fall back to the combined source plan and successful Explorer notes.
+
+## Fine Control Nodes
+
+### Context
+
+A Context node is a root data source and does not make a model call. It can expose:
+
+- the latest user message;
+- the last assistant message;
+- the most recent 1–100 non-system chat messages;
+- the active character card’s maintained descriptive fields;
+- or the active user persona.
+
+Context nodes cannot receive incoming connections. Their output can feed a Template, Condition, Join, Generation, or Output node.
+
+### Generation
+
+A Generation node sends its configured prompt and connected inputs through either an isolated Connection Manager profile or the legacy `/gen` transport.
+
+- `{{INPUTS}}` inserts every connected result with a heading naming its source node.
+- `{{node-id}}` inserts the result of one directly connected node.
+- If a prompt contains neither form, connected material is appended automatically under `# CONNECTED INPUTS`.
+
+A root Generation node has no incoming connection. Its prompt starts the workflow using the current SillyTavern conversation context.
+
+Generation nodes offer two connection modes:
+
+- **Connection Manager profile:** uses the selected profile’s isolated API, model, preset, URL, credentials, and instruct settings. A per-node maximum output length from 128–32,768 tokens is available.
+- **Legacy/global environment:** uses the direct preset, API, model, and custom URL fields retained from the original Orchestrator.
+
+Connection Manager must be enabled and contain at least one supported Chat Completion or Text Completion profile before an isolated profile appears in the selector.
+
+### Template
+
+A Template performs the same `{{INPUTS}}` and `{{node-id}}` substitution as a Generation prompt but returns the rendered text directly. It is useful for reusable headings, intermediate formats, shared instructions, and assembling a payload without paying for another model call.
+
+### Condition
+
+A Condition inspects its connected text and activates either its green **true** connections or red **false** connections. Supported tests include:
+
+- contains or does not contain;
+- equals or does not equal;
+- matches or does not match a regular expression;
+- is empty or is not empty;
+- and optional case sensitivity.
+
+Nodes whose only incoming connections belong to an untaken branch are marked skipped. Their descendants remain skipped until a branch reconverges with an active input.
+
+### Join
+
+A Join waits for every connected branch and combines their results with its configurable separator. It makes fan-out/fan-in workflows explicit without spending another model call.
+
+### Output
+
+Every valid workflow contains exactly one Output node. It must be terminal and connected. Orchestrator configures that node's environment and injects its completed prompt for SillyTavern's real response generation.
+
+Use a Generation node immediately before Output when a Narrator should draft prose for an Editor. Connect a planning node directly to Output when the normal SillyTavern generation should act as the Narrator.
+
+## Scheduling and Concurrency
+
+Connections define dependencies. Nodes that become ready together are placed in the same execution batch.
+
+Sibling Generation nodes assigned to Connection Manager profiles execute simultaneously. Their requests use explicit profile settings, so different providers and models can run together without changing SillyTavern’s active global connection.
+
+Legacy/global Generation nodes remain serialized after the isolated group because they still change shared API, preset, model, and custom URL state. This lets old migrated workflows continue to work safely while newer workflows opt into genuine concurrency one node at a time.
+
+The Output node also retains the global environment because it prepares SillyTavern’s visible response generation rather than making an internal raw request.
+
+Stopping generation, changing chats, or disabling Orchestrator aborts active isolated requests. If one required concurrent node fails, Orchestrator waits for its already-running siblings to settle before performing transactional cleanup, preventing late results from mutating a finished workflow.
+
+## Workflow Validation
+
+Orchestrator refuses to run a Fine Control graph that contains:
+
+- no nodes or no Output;
+- more than one Output;
+- an Output with outgoing connections;
+- a cycle;
+- duplicate node identifiers;
+- a Context node with incoming connections;
+- a Condition without an input or branch;
+- an invalid Condition regular expression;
+- a Join without inputs;
+- a non-Join node without a prompt;
+- or a branch that never contributes to Output.
+
+The canvas footer reports the first validation issue while editing.
+
+Each node also displays its dependency step. Nodes marked **parallel-ready** have
+all become runnable from the same upstream state and do not depend on one another.
 
 ## Design Principles
 

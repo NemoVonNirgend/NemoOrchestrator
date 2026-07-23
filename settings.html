@@ -14,6 +14,27 @@
                 <span><b>Enable orchestration</b></span>
             </label>
 
+            <div class="no-mode-switch" role="group" aria-label="Workflow editing mode">
+                <button type="button" class="menu_button active" data-no-mode="simple">
+                    Simple setup
+                </button>
+                <button type="button" class="menu_button" data-no-mode="fine">
+                    Fine Control
+                </button>
+            </div>
+
+            <div id="no_fine_summary" class="no-fine-summary no-hidden">
+                <div>
+                    <b>Visual workflow enabled</b>
+                    <small>Build branching model pipelines with draggable nodes, connected inputs, joins, and one final Output node.</small>
+                </div>
+                <button type="button" id="no_open_workflow" class="menu_button">
+                    <i class="fa-solid fa-diagram-project"></i>
+                    Open workflow canvas
+                </button>
+            </div>
+
+            <div id="no_simple_settings">
             <div class="no-stage">
                 <label class="checkbox_label">
                     <input type="checkbox" id="no_planner_enabled">
@@ -103,6 +124,7 @@
             </div>
 
             <small>Leave an API or model blank to keep the current SillyTavern connection for that stage.</small>
+            </div>
         </div>
     </div>
 </div>

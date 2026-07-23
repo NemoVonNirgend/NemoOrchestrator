@@ -57,6 +57,7 @@ export function createWorkflowEditor({
     getWorkflow,
     saveWorkflow,
     resetWorkflow,
+    getConnectionProfiles,
     notify,
 }) {
     let graph = null;
@@ -153,6 +154,8 @@ export function createWorkflowEditor({
             separator: '\n\n',
             failurePolicy: type === 'generation' ? 'abort' : 'abort',
             environment: { preset: 'Default', api: '', model: '', customUrl: '' },
+            connectionProfile: '',
+            maxTokens: 2048,
             contextSource: 'latest-user',
             messageLimit: 12,
             condition: {
@@ -284,10 +287,13 @@ export function createWorkflowEditor({
         const batches = buildExecutionBatches(graph).batches;
         const batchByNode = new Map();
         for (const [index, batch] of batches.entries()) {
+            const concurrentProfiles = batch.filter(id =>
+                graph.nodes.find(node => node.id === id)?.connectionProfile).length;
             for (const id of batch) {
                 batchByNode.set(id, {
                     number: index + 1,
                     parallel: batch.length > 1,
+                    concurrentProfiles,
                 });
             }
         }
@@ -323,7 +329,13 @@ export function createWorkflowEditor({
             const outgoing = graph.edges.filter(edge => edge.from === node.id).length;
             const batch = batchByNode.get(node.id);
             const step = batch
-                ? `Step ${batch.number}${batch.parallel ? ' · parallel-ready' : ''}`
+                ? `Step ${batch.number}${batch.parallel
+                    ? node.connectionProfile
+                        ? batch.concurrentProfiles > 1
+                            ? ' · live concurrent'
+                            : ' · isolated profile'
+                        : ' · parallel-ready'
+                    : ''}`
                 : 'Unscheduled';
             card.append(makeElement(
                 'div',
@@ -518,26 +530,79 @@ export function createWorkflowEditor({
                     ], value => updateNode('failurePolicy', value)),
                 ));
                 inspector.append(makeElement('h4', '', 'Connection'));
-                inspector.append(field(
-                    'Preset',
-                    input(node.environment.preset, value =>
-                        updateNode('environment.preset', value)),
-                ));
-                inspector.append(field(
-                    'API',
-                    input(node.environment.api, value =>
-                        updateNode('environment.api', value)),
-                ));
-                inspector.append(field(
-                    'Model',
-                    input(node.environment.model, value =>
-                        updateNode('environment.model', value)),
-                ));
-                inspector.append(field(
-                    'Custom URL',
-                    input(node.environment.customUrl, value =>
-                        updateNode('environment.customUrl', value)),
-                ));
+                if (node.type === 'generation') {
+                    const profiles = getConnectionProfiles?.() || [];
+                    const profileOptions = profiles.map(profile => [
+                        profile.id,
+                        `${profile.name}${profile.model ? ` — ${profile.model}` : ''}`,
+                    ]);
+                    if (
+                        node.connectionProfile &&
+                        !profiles.some(profile => profile.id === node.connectionProfile)
+                    ) {
+                        profileOptions.push([
+                            node.connectionProfile,
+                            `Missing profile — ${node.connectionProfile}`,
+                        ]);
+                    }
+                    inspector.append(field(
+                        'Connection mode',
+                        select(
+                            node.connectionProfile,
+                            [
+                                ['', 'Legacy / global environment'],
+                                ...profileOptions,
+                            ],
+                            value => {
+                                updateNode('connectionProfile', value);
+                                renderInspector();
+                            },
+                        ),
+                    ));
+                    if (node.connectionProfile) {
+                        const maxTokens = input(
+                            node.maxTokens,
+                            value => updateNode(
+                                'maxTokens',
+                                Math.min(
+                                    32768,
+                                    Math.max(128, Number.parseInt(value, 10) || 2048),
+                                ),
+                            ),
+                        );
+                        maxTokens.type = 'number';
+                        maxTokens.min = '128';
+                        maxTokens.max = '32768';
+                        inspector.append(field('Maximum output tokens', maxTokens));
+                        inspector.append(makeElement(
+                            'small',
+                            'no-profile-concurrency-note',
+                            'Connection Manager profiles are isolated and run concurrently with sibling profile nodes.',
+                        ));
+                    }
+                }
+                if (node.type === 'output' || !node.connectionProfile) {
+                    inspector.append(field(
+                        'Preset',
+                        input(node.environment.preset, value =>
+                            updateNode('environment.preset', value)),
+                    ));
+                    inspector.append(field(
+                        'API',
+                        input(node.environment.api, value =>
+                            updateNode('environment.api', value)),
+                    ));
+                    inspector.append(field(
+                        'Model',
+                        input(node.environment.model, value =>
+                            updateNode('environment.model', value)),
+                    ));
+                    inspector.append(field(
+                        'Custom URL',
+                        input(node.environment.customUrl, value =>
+                            updateNode('environment.customUrl', value)),
+                    ));
+                }
             }
         }
 
@@ -723,7 +788,7 @@ export function createWorkflowEditor({
                 </div>
                 <footer class="no-workflow-footer">
                     <span class="no-workflow-status"></span>
-                    <small>Parallel branches are dependency-aware and safely serialized while SillyTavern connection settings remain global.</small>
+                    <small>Connection Manager profile nodes run concurrently. Legacy nodes remain serialized because they share SillyTavern’s global connection.</small>
                 </footer>
                 <input type="file" accept="application/json,.json" class="no-workflow-file no-hidden">
             </div>`;

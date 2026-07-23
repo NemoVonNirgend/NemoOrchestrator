@@ -12,6 +12,8 @@ Nemo Orchestrator is a configurable multi-model narrative pipeline for SillyTave
 
 Every stage can use the current SillyTavern connection or switch to its own preset, API, and model through STscript commands.
 
+The modern default prompts favor continuity, restrained character logic, user autonomy, and proportionate scene movement. They explicitly allow ordinary dialogue, pauses, routine behavior, and quiet scenes instead of forcing every response toward spectacle or emotional escalation. Every stage prompt remains editable, and migrated Project Gremlin prompts take precedence over the defaults.
+
 ## Status
 
 The `0.1.x` series is an extraction and compatibility release. Internal setting names retain some Project Gremlin terminology so existing configurations can be migrated safely. Public UI terminology uses the new stage names.

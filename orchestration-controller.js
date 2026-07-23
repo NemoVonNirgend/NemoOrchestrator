@@ -20,6 +20,7 @@ export function createOrchestrationController({
     applyStageEnvironment,
     applyWriterChaosEnvironment,
     executeGen,
+    runFineWorkflow,
     notify,
     logger = console,
     random = Math.random,
@@ -100,6 +101,28 @@ export function createOrchestrationController({
             snapshot = await captureEnvironment();
             assertActive();
             await clearInjections();
+
+            if (getSettings().workflowMode === 'fine') {
+                if (typeof runFineWorkflow !== 'function') {
+                    throw new Error('Fine Control workflow execution is unavailable.');
+                }
+                const result = await runFineWorkflow({
+                    workflow: getSettings().visualWorkflow,
+                    assertActive,
+                });
+                if (!result?.instruction?.trim()) {
+                    throw new Error('The Fine Control workflow returned no final instruction.');
+                }
+                assertActive();
+                await installInjections(result.instruction);
+                assertActive();
+
+                pendingEnvironment = snapshot;
+                snapshot = null;
+                notify('success', `Workflow prepared through ${result.outputNode?.name || 'Output'}.`);
+                return true;
+            }
+
             const blueprint = await runPlanningPipeline();
             if (!blueprint?.trim()) throw new Error('The planning stages returned no blueprint.');
             assertActive();

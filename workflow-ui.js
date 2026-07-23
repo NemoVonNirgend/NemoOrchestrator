@@ -1,4 +1,5 @@
 import {
+    buildExecutionBatches,
     NODE_TYPES,
     normalizeWorkflow,
     validateWorkflow,
@@ -43,7 +44,49 @@ export function createWorkflowEditor({
     let status = null;
     let selectedId = null;
     let pendingConnection = null;
+    let zoom = 1;
+    let undoStack = [];
+    let redoStack = [];
+    let undoButton = null;
+    let redoButton = null;
+    let zoomLabel = null;
+    let nameInput = null;
     const nodeStates = new Map();
+    const SURFACE_WIDTH = 2100;
+    const SURFACE_HEIGHT = 1100;
+
+    function remember() {
+        if (!graph) return;
+        undoStack.push(JSON.stringify(graph));
+        if (undoStack.length > 50) undoStack.shift();
+        redoStack = [];
+        updateHistoryButtons();
+    }
+
+    function updateHistoryButtons() {
+        if (undoButton) undoButton.disabled = !undoStack.length;
+        if (redoButton) redoButton.disabled = !redoStack.length;
+    }
+
+    function restoreHistory(source, destination) {
+        if (!source.length) return;
+        destination.push(JSON.stringify(graph));
+        graph = normalizeWorkflow(JSON.parse(source.pop()));
+        if (!graph.nodes.some(node => node.id === selectedId)) selectedId = null;
+        pendingConnection = null;
+        persist();
+        render();
+        if (nameInput) nameInput.value = graph.name;
+        updateHistoryButtons();
+    }
+
+    function undo() {
+        restoreHistory(undoStack, redoStack);
+    }
+
+    function redo() {
+        restoreHistory(redoStack, undoStack);
+    }
 
     function persist() {
         graph = normalizeWorkflow(graph);
@@ -69,6 +112,7 @@ export function createWorkflowEditor({
     }
 
     function addNode(type) {
+        remember();
         const id = uniqueNodeId(type);
         const positionOffset = graph.nodes.length * 24;
         graph.nodes.push({
@@ -97,6 +141,7 @@ export function createWorkflowEditor({
         if (!selectedId) return;
         const node = graph.nodes.find(candidate => candidate.id === selectedId);
         if (!node || !window.confirm(`Delete "${node.name}" and its connections?`)) return;
+        remember();
         graph.nodes = graph.nodes.filter(candidate => candidate.id !== selectedId);
         graph.edges = graph.edges.filter(edge =>
             edge.from !== selectedId && edge.to !== selectedId);
@@ -110,6 +155,7 @@ export function createWorkflowEditor({
     function addConnection(from, to) {
         if (!from || !to || from === to) return;
         if (graph.edges.some(edge => edge.from === from && edge.to === to)) return;
+        remember();
         graph.edges.push({
             id: `edge-${Date.now()}-${Math.random().toString(16).slice(2)}`,
             from,
@@ -119,6 +165,7 @@ export function createWorkflowEditor({
     }
 
     function removeEdge(id) {
+        remember();
         graph.edges = graph.edges.filter(edge => edge.id !== id);
         persist();
         render();
@@ -153,11 +200,18 @@ export function createWorkflowEditor({
         const startY = event.clientY;
         const originX = node.position.x;
         const originY = node.position.y;
+        remember();
         card.setPointerCapture(event.pointerId);
 
         const move = moveEvent => {
-            node.position.x = Math.max(0, originX + moveEvent.clientX - startX);
-            node.position.y = Math.max(0, originY + moveEvent.clientY - startY);
+            node.position.x = Math.max(
+                0,
+                originX + (moveEvent.clientX - startX) / zoom,
+            );
+            node.position.y = Math.max(
+                0,
+                originY + (moveEvent.clientY - startY) / zoom,
+            );
             card.style.left = `${node.position.x}px`;
             card.style.top = `${node.position.y}px`;
             renderEdges();
@@ -179,6 +233,16 @@ export function createWorkflowEditor({
     function renderNodes() {
         if (!surface) return;
         surface.querySelectorAll('.no-workflow-node').forEach(node => node.remove());
+        const batches = buildExecutionBatches(graph).batches;
+        const batchByNode = new Map();
+        for (const [index, batch] of batches.entries()) {
+            for (const id of batch) {
+                batchByNode.set(id, {
+                    number: index + 1,
+                    parallel: batch.length > 1,
+                });
+            }
+        }
         for (const node of graph.nodes) {
             const card = makeElement(
                 'article',
@@ -205,10 +269,14 @@ export function createWorkflowEditor({
 
             const incoming = graph.edges.filter(edge => edge.to === node.id).length;
             const outgoing = graph.edges.filter(edge => edge.from === node.id).length;
+            const batch = batchByNode.get(node.id);
+            const step = batch
+                ? `Step ${batch.number}${batch.parallel ? ' · parallel-ready' : ''}`
+                : 'Unscheduled';
             card.append(makeElement(
                 'div',
                 'no-node-meta',
-                `${incoming} in · ${outgoing} out`,
+                `${step}\n${incoming} in · ${outgoing} out`,
             ));
             card.addEventListener('click', () => {
                 selectedId = node.id;
@@ -230,10 +298,10 @@ export function createWorkflowEditor({
             if (!from || !to) continue;
             const fromRect = from.getBoundingClientRect();
             const toRect = to.getBoundingClientRect();
-            const x1 = fromRect.right - surfaceRect.left;
-            const y1 = fromRect.top + fromRect.height / 2 - surfaceRect.top;
-            const x2 = toRect.left - surfaceRect.left;
-            const y2 = toRect.top + toRect.height / 2 - surfaceRect.top;
+            const x1 = (fromRect.right - surfaceRect.left) / zoom;
+            const y1 = (fromRect.top + fromRect.height / 2 - surfaceRect.top) / zoom;
+            const x2 = (toRect.left - surfaceRect.left) / zoom;
+            const y2 = (toRect.top + toRect.height / 2 - surfaceRect.top) / zoom;
             const bend = Math.max(60, Math.abs(x2 - x1) * 0.45);
             const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             path.setAttribute('d', `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`);
@@ -246,6 +314,7 @@ export function createWorkflowEditor({
     function updateNode(key, value) {
         const node = graph.nodes.find(candidate => candidate.id === selectedId);
         if (!node) return;
+        remember();
         if (key.startsWith('environment.')) {
             node.environment[key.split('.')[1]] = value;
         } else {
@@ -253,6 +322,23 @@ export function createWorkflowEditor({
         }
         persist();
         renderNodes();
+    }
+
+    function duplicateSelected() {
+        const source = graph.nodes.find(candidate => candidate.id === selectedId);
+        if (!source) return;
+        remember();
+        const copy = clone(source);
+        copy.id = uniqueNodeId(source.type);
+        copy.name = `${source.name} copy`;
+        copy.position = {
+            x: source.position.x + 45,
+            y: source.position.y + 45,
+        };
+        graph.nodes.push(copy);
+        selectedId = copy.id;
+        persist();
+        render();
     }
 
     function input(value, onChange, className = 'text_pole') {
@@ -359,7 +445,12 @@ export function createWorkflowEditor({
         const deleteButton = makeElement('button', 'menu_button no-delete-node', 'Delete node');
         deleteButton.type = 'button';
         deleteButton.addEventListener('click', deleteSelected);
-        inspector.append(deleteButton);
+        const duplicateButton = makeElement('button', 'menu_button', 'Duplicate node');
+        duplicateButton.type = 'button';
+        duplicateButton.addEventListener('click', duplicateSelected);
+        const nodeActions = makeElement('div', 'no-node-actions');
+        nodeActions.append(duplicateButton, deleteButton);
+        inspector.append(nodeActions);
     }
 
     function render() {
@@ -386,11 +477,13 @@ export function createWorkflowEditor({
                 const imported = normalizeWorkflow(JSON.parse(String(reader.result)));
                 const result = validateWorkflow(imported);
                 if (!result.valid) throw new Error(result.errors.join(' '));
+                remember();
                 graph = imported;
                 selectedId = null;
                 pendingConnection = null;
                 persist();
                 render();
+                if (nameInput) nameInput.value = graph.name;
                 notify('success', 'Workflow imported.');
             } catch (error) {
                 notify('error', `Could not import workflow: ${error.message}`);
@@ -399,19 +492,95 @@ export function createWorkflowEditor({
         reader.readAsText(file);
     }
 
+    function setZoom(nextZoom, anchor = null) {
+        const previous = zoom;
+        zoom = Math.min(1.6, Math.max(0.4, Number(nextZoom) || 1));
+        surface.style.transform = `scale(${zoom})`;
+        surface.parentElement.style.width = `${SURFACE_WIDTH * zoom}px`;
+        surface.parentElement.style.height = `${SURFACE_HEIGHT * zoom}px`;
+        if (zoomLabel) zoomLabel.textContent = `${Math.round(zoom * 100)}%`;
+
+        if (anchor && viewport) {
+            const contentX = (viewport.scrollLeft + anchor.x) / previous;
+            const contentY = (viewport.scrollTop + anchor.y) / previous;
+            viewport.scrollLeft = contentX * zoom - anchor.x;
+            viewport.scrollTop = contentY * zoom - anchor.y;
+        }
+        requestAnimationFrame(renderEdges);
+    }
+
+    function fitWorkflow() {
+        if (!graph.nodes.length || !viewport) {
+            setZoom(1);
+            return;
+        }
+        const minX = Math.min(...graph.nodes.map(node => node.position.x));
+        const minY = Math.min(...graph.nodes.map(node => node.position.y));
+        const maxX = Math.max(...graph.nodes.map(node => node.position.x + 240));
+        const maxY = Math.max(...graph.nodes.map(node => node.position.y + 125));
+        const padding = 80;
+        const width = maxX - minX + padding * 2;
+        const height = maxY - minY + padding * 2;
+        const availableWidth = Math.max(320, viewport.clientWidth);
+        const availableHeight = Math.max(240, viewport.clientHeight);
+        setZoom(Math.min(1.2, availableWidth / width, availableHeight / height));
+        viewport.scrollLeft = Math.max(0, (minX - padding) * zoom);
+        viewport.scrollTop = Math.max(0, (minY - padding) * zoom);
+    }
+
+    function resetView() {
+        setZoom(1);
+        viewport.scrollTo({ left: 0, top: 0 });
+    }
+
+    function beginPan(event) {
+        if (event.target.closest('.no-workflow-node') || event.button > 1) return;
+        event.preventDefault();
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const startLeft = viewport.scrollLeft;
+        const startTop = viewport.scrollTop;
+        viewport.setPointerCapture(event.pointerId);
+        viewport.classList.add('is-panning');
+
+        const move = moveEvent => {
+            viewport.scrollLeft = startLeft - (moveEvent.clientX - startX);
+            viewport.scrollTop = startTop - (moveEvent.clientY - startY);
+        };
+        const finish = finishEvent => {
+            viewport.removeEventListener('pointermove', move);
+            viewport.removeEventListener('pointerup', finish);
+            viewport.removeEventListener('pointercancel', finish);
+            if (viewport.hasPointerCapture(finishEvent.pointerId)) {
+                viewport.releasePointerCapture(finishEvent.pointerId);
+            }
+            viewport.classList.remove('is-panning');
+        };
+        viewport.addEventListener('pointermove', move);
+        viewport.addEventListener('pointerup', finish);
+        viewport.addEventListener('pointercancel', finish);
+    }
+
     function build() {
         root = makeElement('div', 'no-workflow-modal no-hidden');
+        root.tabIndex = -1;
         root.innerHTML = `
             <div class="no-workflow-shell" role="dialog" aria-modal="true" aria-label="Nemo Orchestrator workflow editor">
                 <header class="no-workflow-toolbar">
                     <div>
-                        <b>Fine Control Workflow</b>
+                        <input class="text_pole no-workflow-name" aria-label="Workflow name">
                         <small>Connect outputs on the right to inputs on the left.</small>
                     </div>
                     <div class="no-workflow-actions">
+                        <button type="button" class="menu_button" data-action="undo" title="Undo">↶</button>
+                        <button type="button" class="menu_button" data-action="redo" title="Redo">↷</button>
                         <button type="button" class="menu_button" data-action="add-generation">+ Generation</button>
                         <button type="button" class="menu_button" data-action="add-join">+ Join</button>
                         <button type="button" class="menu_button" data-action="add-output">+ Output</button>
+                        <button type="button" class="menu_button" data-action="zoom-out" title="Zoom out">−</button>
+                        <button type="button" class="menu_button no-zoom-label" data-action="reset-view" title="Reset view">100%</button>
+                        <button type="button" class="menu_button" data-action="zoom-in" title="Zoom in">+</button>
+                        <button type="button" class="menu_button" data-action="fit">Fit</button>
                         <button type="button" class="menu_button" data-action="import">Import</button>
                         <button type="button" class="menu_button" data-action="export">Export</button>
                         <button type="button" class="menu_button" data-action="reset">Reset</button>
@@ -420,8 +589,10 @@ export function createWorkflowEditor({
                 </header>
                 <div class="no-workflow-main">
                     <div class="no-workflow-viewport">
-                        <div class="no-workflow-surface">
-                            <svg class="no-workflow-lines" aria-hidden="true"></svg>
+                        <div class="no-workflow-stage">
+                            <div class="no-workflow-surface">
+                                <svg class="no-workflow-lines" aria-hidden="true"></svg>
+                            </div>
                         </div>
                     </div>
                     <aside class="no-workflow-inspector"></aside>
@@ -438,8 +609,14 @@ export function createWorkflowEditor({
         svg = root.querySelector('.no-workflow-lines');
         inspector = root.querySelector('.no-workflow-inspector');
         status = root.querySelector('.no-workflow-status');
+        nameInput = root.querySelector('.no-workflow-name');
+        undoButton = root.querySelector('[data-action="undo"]');
+        redoButton = root.querySelector('[data-action="redo"]');
+        zoomLabel = root.querySelector('.no-zoom-label');
         const fileInput = root.querySelector('.no-workflow-file');
 
+        undoButton.addEventListener('click', undo);
+        redoButton.addEventListener('click', redo);
         root.querySelector('[data-action="add-generation"]').addEventListener('click', () =>
             addNode('generation'));
         root.querySelector('[data-action="add-join"]').addEventListener('click', () =>
@@ -447,6 +624,24 @@ export function createWorkflowEditor({
         root.querySelector('[data-action="add-output"]').addEventListener('click', () =>
             addNode('output'));
         root.querySelector('[data-action="export"]').addEventListener('click', exportWorkflow);
+        root.querySelector('[data-action="zoom-out"]').addEventListener('click', () =>
+            setZoom(zoom - 0.1, {
+                x: viewport.clientWidth / 2,
+                y: viewport.clientHeight / 2,
+            }));
+        root.querySelector('[data-action="zoom-in"]').addEventListener('click', () =>
+            setZoom(zoom + 0.1, {
+                x: viewport.clientWidth / 2,
+                y: viewport.clientHeight / 2,
+            }));
+        root.querySelector('[data-action="reset-view"]').addEventListener('click', resetView);
+        root.querySelector('[data-action="fit"]').addEventListener('click', fitWorkflow);
+        nameInput.addEventListener('change', () => {
+            remember();
+            graph.name = nameInput.value.trim() || 'Untitled workflow';
+            nameInput.value = graph.name;
+            persist();
+        });
         root.querySelector('[data-action="import"]').addEventListener('click', () =>
             fileInput.click());
         fileInput.addEventListener('change', () => {
@@ -455,17 +650,51 @@ export function createWorkflowEditor({
         });
         root.querySelector('[data-action="reset"]').addEventListener('click', () => {
             if (!window.confirm('Reset Fine Control to the maintained default workflow?')) return;
+            remember();
             graph = normalizeWorkflow(resetWorkflow());
             selectedId = null;
             pendingConnection = null;
             persist();
             render();
+            nameInput.value = graph.name;
         });
         root.querySelector('[data-action="close"]').addEventListener('click', close);
         root.addEventListener('click', event => {
             if (event.target === root) close();
         });
         viewport.addEventListener('scroll', renderEdges, { passive: true });
+        viewport.addEventListener('pointerdown', beginPan);
+        viewport.addEventListener('wheel', event => {
+            if (!event.ctrlKey && !event.metaKey) return;
+            event.preventDefault();
+            const bounds = viewport.getBoundingClientRect();
+            setZoom(zoom + (event.deltaY < 0 ? 0.1 : -0.1), {
+                x: event.clientX - bounds.left,
+                y: event.clientY - bounds.top,
+            });
+        }, { passive: false });
+        root.addEventListener('keydown', event => {
+            const editing = event.target.matches('input, textarea, select');
+            if (
+                !editing &&
+                (event.ctrlKey || event.metaKey) &&
+                event.key.toLowerCase() === 'z'
+            ) {
+                event.preventDefault();
+                if (event.shiftKey) redo();
+                else undo();
+            } else if (!editing && (event.key === 'Delete' || event.key === 'Backspace')) {
+                event.preventDefault();
+                deleteSelected();
+            } else if (event.key === 'Escape') {
+                if (pendingConnection) {
+                    pendingConnection = null;
+                    renderNodes();
+                } else {
+                    close();
+                }
+            }
+        });
         window.addEventListener('resize', renderEdges);
     }
 
@@ -474,9 +703,16 @@ export function createWorkflowEditor({
         graph = normalizeWorkflow(getWorkflow());
         selectedId = null;
         pendingConnection = null;
+        undoStack = [];
+        redoStack = [];
         root.classList.remove('no-hidden');
         document.body.classList.add('no-workflow-open');
+        root.focus({ preventScroll: true });
+        nameInput.value = graph.name;
+        updateHistoryButtons();
+        setZoom(1);
         render();
+        requestAnimationFrame(fitWorkflow);
     }
 
     function close() {

@@ -47,22 +47,30 @@ function cloneSetting(value) {
     return JSON.parse(JSON.stringify(value));
 }
 
-export function importLegacySettings(extensionSettings, orchestratorSettings) {
+export function importLegacySettings(
+    extensionSettings,
+    orchestratorSettings,
+    existingKeys = [],
+) {
     if (orchestratorSettings.migrationVersion >= MIGRATION_VERSION) {
         return { imported: false, count: 0 };
     }
 
     const legacy = extensionSettings[LEGACY_EXTENSION];
+    const protectedKeys = new Set(existingKeys);
     let count = 0;
 
     if (legacy && typeof legacy === 'object') {
         for (const key of LEGACY_KEYS) {
-            if (legacy[key] === undefined) continue;
+            if (legacy[key] === undefined || protectedKeys.has(key)) continue;
             orchestratorSettings[key] = cloneSetting(legacy[key]);
             count += 1;
         }
 
-        if (legacy.projectGremlinEnabled !== undefined) {
+        if (
+            legacy.projectGremlinEnabled !== undefined &&
+            !protectedKeys.has('enabled')
+        ) {
             orchestratorSettings.enabled = Boolean(legacy.projectGremlinEnabled);
             count += 1;
         }

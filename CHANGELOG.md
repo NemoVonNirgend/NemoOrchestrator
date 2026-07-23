@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.0
+
+### Added
+
+- Optional Fine Control mode with a full-screen visual workflow canvas.
+- Draggable Generation, Join, and Output nodes with visible input/output ports.
+- Click-to-connect branching and reconvergence, including multiple dependency-ready branches.
+- Per-node prompts, presets, APIs, models, custom URLs, and failure policies.
+- Named input placeholders such as `{{planner}}` and aggregate `{{INPUTS}}` injection.
+- Versioned workflow persistence with JSON import, export, and maintained-default reset.
+- Graph validation for cycles, duplicate nodes, disconnected branches, missing prompts, and ambiguous outputs.
+- Runtime node states for running, completed, and failed stages.
+
+### Changed
+
+- The existing five-stage configuration remains available as Simple setup and is still the default.
+- Fine Control begins with a maintained Planner → parallel Explorers → Join → Synthesizer → Narrator → Editor graph populated from the user's existing connection and prompt settings.
+- Workflow execution now uses the same transactional connection capture, cancellation, cleanup, and restoration guarantees as Simple setup.
+
+### Execution note
+
+- Independent branches are recognized as the same dependency batch. They are currently executed in safe sequence because SillyTavern's active API, preset, model, and custom URL are shared global state. The graph format preserves concurrency boundaries for a future isolated-generation transport.
+
 ## 0.1.0
 
 ### Added

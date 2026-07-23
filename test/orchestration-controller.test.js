@@ -134,6 +134,41 @@ test('Fine Control failure restores the original environment', async () => {
     );
 });
 
+test('Fine Control cancellation aborts isolated profile requests', async () => {
+    const settings = makeSettings({ workflowMode: 'fine', visualWorkflow: {} });
+    let enterWorkflow;
+    const entered = new Promise(resolve => {
+        enterWorkflow = resolve;
+    });
+    let capturedSignal;
+    const { calls, controller, snapshot } = makeHarness({
+        settings,
+        runFineWorkflow: async ({ signal }) => {
+            capturedSignal = signal;
+            enterWorkflow();
+            await new Promise((resolve, reject) => {
+                signal.addEventListener('abort', () => {
+                    const error = new Error('Profile request aborted');
+                    error.name = 'AbortError';
+                    reject(error);
+                }, { once: true });
+            });
+        },
+    });
+
+    const run = controller.runPipeline();
+    await entered;
+    await controller.cancelPipelineAndFinish();
+
+    assert.equal(await run, false);
+    assert.equal(capturedSignal.aborted, true);
+    assert.deepEqual(calls.restored, [snapshot]);
+    assert.equal(
+        calls.notifications.some(item => item.level === 'error'),
+        false,
+    );
+});
+
 test('planning failure clears injections and immediately restores the snapshot', async () => {
     const { calls, controller, snapshot } = makeHarness({
         runPlanningPipeline: async () => {

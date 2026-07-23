@@ -1,8 +1,8 @@
 {
     "display_name": "Nemo Orchestrator",
     "author": "@NemoVonNirgend",
-    "version": "0.1.0",
-    "description": "A configurable multi-model narrative orchestration pipeline for SillyTavern.",
+    "version": "0.2.0",
+    "description": "A visual, configurable multi-model narrative workflow builder for SillyTavern.",
     "requires": [],
     "optional": [],
     "js": "index.js",

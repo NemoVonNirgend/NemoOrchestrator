@@ -15,9 +15,11 @@ Simple setup retains the maintained Planner, Creative Explorers, Synthesizer, Wr
 Fine Control exposes the generation pipeline as a visual node graph inspired by visual game-development tools and ComfyUI.
 
 - Drag nodes around the canvas.
+- Pan the background, zoom from 40–160%, or fit the complete graph into view.
 - Click an output port and then an input port to draw a connection.
 - Branch one result into multiple independent stages.
 - Recombine branches with a Join node.
+- Use undo/redo, duplicate nodes, and rename the complete workflow.
 - Configure the prompt and connection environment of each generation stage.
 - Choose whether an individual Generation failure aborts the workflow or continues with an empty result.
 - Import or export complete workflows as JSON.
@@ -86,6 +88,9 @@ Orchestrator refuses to run a Fine Control graph that contains:
 - or a branch that never contributes to Output.
 
 The canvas footer reports the first validation issue while editing.
+
+Each node also displays its dependency step. Nodes marked **parallel-ready** have
+all become runnable from the same upstream state and do not depend on one another.
 
 ## Design Principles
 

@@ -63,13 +63,20 @@ Context nodes cannot receive incoming connections. Their output can feed a Templ
 
 ### Generation
 
-A Generation node calls `/gen` with its configured prompt and the outputs connected to its input.
+A Generation node sends its configured prompt and connected inputs through either an isolated Connection Manager profile or the legacy `/gen` transport.
 
 - `{{INPUTS}}` inserts every connected result with a heading naming its source node.
 - `{{node-id}}` inserts the result of one directly connected node.
 - If a prompt contains neither form, connected material is appended automatically under `# CONNECTED INPUTS`.
 
 A root Generation node has no incoming connection. Its prompt starts the workflow using the current SillyTavern conversation context.
+
+Generation nodes offer two connection modes:
+
+- **Connection Manager profile:** uses the selected profile’s isolated API, model, preset, URL, credentials, and instruct settings. A per-node maximum output length from 128–32,768 tokens is available.
+- **Legacy/global environment:** uses the direct preset, API, model, and custom URL fields retained from the original Orchestrator.
+
+Connection Manager must be enabled and contain at least one supported Chat Completion or Text Completion profile before an isolated profile appears in the selector.
 
 ### Template
 
@@ -99,11 +106,15 @@ Use a Generation node immediately before Output when a Narrator should draft pro
 
 ## Scheduling and Concurrency
 
-Connections define dependencies. Nodes that become ready together are placed in the same execution batch, which records the intended concurrency boundary.
+Connections define dependencies. Nodes that become ready together are placed in the same execution batch.
 
-Fine Control currently executes those ready nodes safely in sequence. SillyTavern's active API, preset, model, and custom URL are shared global state, so genuinely simultaneous nodes using different connections could overwrite one another. The workflow format and scheduler preserve parallel batches so isolated concurrent generation can be enabled later without redesigning saved graphs.
+Sibling Generation nodes assigned to Connection Manager profiles execute simultaneously. Their requests use explicit profile settings, so different providers and models can run together without changing SillyTavern’s active global connection.
 
-This affects latency, not results: sibling nodes still receive the same upstream state and neither receives the other's output.
+Legacy/global Generation nodes remain serialized after the isolated group because they still change shared API, preset, model, and custom URL state. This lets old migrated workflows continue to work safely while newer workflows opt into genuine concurrency one node at a time.
+
+The Output node also retains the global environment because it prepares SillyTavern’s visible response generation rather than making an internal raw request.
+
+Stopping generation, changing chats, or disabling Orchestrator aborts active isolated requests. If one required concurrent node fails, Orchestrator waits for its already-running siblings to settle before performing transactional cleanup, preventing late results from mutating a finished workflow.
 
 ## Workflow Validation
 

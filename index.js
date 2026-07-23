@@ -2,6 +2,7 @@ import { eventSource, event_types, saveSettingsDebounced } from '../../../../scr
 import { extension_settings, getContext } from '../../../extensions.js';
 import {
     applyStageEnvironment,
+    applyWorkflowEnvironment,
     applyWriterChaosEnvironment,
     executeGen,
     runPlanningPipeline,
@@ -10,6 +11,9 @@ import { captureEnvironment, restoreEnvironment } from './environment.js';
 import { importLegacySettings } from './migration.js';
 import { createOrchestrationController } from './orchestration-controller.js';
 import { normalizeExplorerIterations } from './orchestrator-utils.js';
+import { executeWorkflow, normalizeWorkflow, validateWorkflow } from './workflow-graph.js';
+import { createDefaultWorkflow } from './workflow-defaults.js';
+import { createWorkflowEditor } from './workflow-ui.js';
 
 const EXTENSION_NAME = 'NemoOrchestrator';
 const EXTENSION_PATH = `scripts/extensions/third-party/${EXTENSION_NAME}`;
@@ -28,6 +32,8 @@ const defaults = {
     gremlinAuditorInstructionsTemplate: '',
     migrationVersion: 0,
     migratedFromProsePolisher: false,
+    workflowMode: 'simple',
+    visualWorkflow: null,
 };
 
 for (const role of ROLE_KEYS) {
@@ -78,6 +84,29 @@ async function installInjections(finalInstruction) {
     }
 }
 
+async function runFineWorkflow({ workflow, assertActive }) {
+    workflowEditor?.resetNodeStates();
+    return executeWorkflow(workflow, {
+        assertActive,
+        runGeneration: async (node, prompt) => {
+            if (!await applyWorkflowEnvironment(node.environment)) {
+                throw new Error(`${node.name} environment could not be configured.`);
+            }
+            assertActive();
+            return executeGen(prompt);
+        },
+        prepareOutput: async (environment, node) => {
+            if (!await applyWorkflowEnvironment(environment)) {
+                throw new Error(`${node.name} environment could not be configured.`);
+            }
+            assertActive();
+        },
+        onNodeStart: node => workflowEditor?.setNodeState(node.id, 'running'),
+        onNodeComplete: node => workflowEditor?.setNodeState(node.id, 'complete'),
+        onNodeError: node => workflowEditor?.setNodeState(node.id, 'error'),
+    });
+}
+
 const controller = createOrchestrationController({
     getSettings: settings,
     captureEnvironment,
@@ -88,8 +117,11 @@ const controller = createOrchestrationController({
     applyStageEnvironment,
     applyWriterChaosEnvironment,
     executeGen,
+    runFineWorkflow,
     notify,
 });
+
+let workflowEditor = null;
 
 function bindBoolean(id, key) {
     const element = document.getElementById(id);
@@ -120,6 +152,12 @@ function updateUi() {
         toggle.classList.toggle('active', enabled);
         toggle.title = `Nemo Orchestrator: ${enabled ? 'On' : 'Off'}`;
     }
+    const fine = settings().workflowMode === 'fine';
+    document.getElementById('no_simple_settings')?.classList.toggle('no-hidden', fine);
+    document.getElementById('no_fine_summary')?.classList.toggle('no-hidden', !fine);
+    document.querySelectorAll('[data-no-mode]').forEach(button => {
+        button.classList.toggle('active', button.dataset.noMode === settings().workflowMode);
+    });
 }
 
 function bindRole(role) {
@@ -147,6 +185,15 @@ async function initialize() {
     if (!Array.isArray(settings().gremlinWriterChaosOptions)) {
         settings().gremlinWriterChaosOptions = [];
     }
+    settings().workflowMode = settings().workflowMode === 'fine' ? 'fine' : 'simple';
+    if (settings().visualWorkflow) {
+        settings().visualWorkflow = normalizeWorkflow(settings().visualWorkflow);
+        if (!validateWorkflow(settings().visualWorkflow).valid) {
+            settings().visualWorkflow = createDefaultWorkflow(settings());
+        }
+    } else if (settings().workflowMode === 'fine') {
+        settings().visualWorkflow = createDefaultWorkflow(settings());
+    }
     saveSettingsDebounced();
     if (migration.imported) {
         notify('success', `Imported ${migration.count} Project Gremlin settings from Prose Polisher.`);
@@ -168,6 +215,33 @@ async function initialize() {
     bindValue('no_writer_prompt', 'gremlinWriterInstructionsTemplate');
     bindValue('no_editor_prompt', 'gremlinAuditorInstructionsTemplate');
     ROLE_KEYS.forEach(bindRole);
+
+    document.querySelectorAll('[data-no-mode]').forEach(button => {
+        button.addEventListener('click', () => {
+            settings().workflowMode = button.dataset.noMode === 'fine' ? 'fine' : 'simple';
+            if (settings().workflowMode === 'fine' && !settings().visualWorkflow) {
+                settings().visualWorkflow = createDefaultWorkflow(settings());
+            }
+            saveSettingsDebounced();
+            updateUi();
+        });
+    });
+
+    workflowEditor = createWorkflowEditor({
+        getWorkflow: () => {
+            if (!settings().visualWorkflow) {
+                settings().visualWorkflow = createDefaultWorkflow(settings());
+            }
+            return settings().visualWorkflow;
+        },
+        saveWorkflow: workflow => {
+            settings().visualWorkflow = normalizeWorkflow(workflow);
+            saveSettingsDebounced();
+        },
+        resetWorkflow: () => createDefaultWorkflow(settings()),
+        notify,
+    });
+    document.getElementById('no_open_workflow')?.addEventListener('click', workflowEditor.open);
 
     const button = document.createElement('button');
     button.id = 'no_toggle';

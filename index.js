@@ -6,6 +6,7 @@ import {
     executeGen,
     runGremlinPlanningPipeline,
 } from './pipeline.js';
+import { importLegacySettings } from './migration.js';
 
 const EXTENSION_NAME = 'NemoOrchestrator';
 const EXTENSION_PATH = `scripts/extensions/third-party/${EXTENSION_NAME}`;
@@ -32,6 +33,8 @@ const defaults = {
     gremlinWriterChaosOptions: [],
     gremlinWriterInstructionsTemplate: '',
     gremlinAuditorInstructionsTemplate: '',
+    migrationVersion: 0,
+    migratedFromProsePolisher: false,
 };
 
 for (const role of ROLE_KEYS) {
@@ -165,6 +168,14 @@ async function initialize() {
         ...defaults,
         ...extension_settings[EXTENSION_NAME],
     };
+    const migration = importLegacySettings(
+        extension_settings,
+        extension_settings[EXTENSION_NAME],
+    );
+    if (migration.imported) {
+        saveSettingsDebounced();
+        notify('success', `Imported ${migration.count} Project Gremlin settings from Prose Polisher.`);
+    }
 
     const html = await fetch(`${EXTENSION_PATH}/settings.html`).then(response => response.text());
     document.getElementById('extensions_settings')?.insertAdjacentHTML('beforeend', html);

@@ -15,6 +15,10 @@ import { executeWorkflow, normalizeWorkflow, validateWorkflow } from './workflow
 import { createDefaultWorkflow } from './workflow-defaults.js';
 import { createWorkflowEditor } from './workflow-ui.js';
 import { resolveWorkflowContext } from './workflow-context.js';
+import {
+    executeProfileGeneration,
+    listConnectionProfiles,
+} from './profile-generation.js';
 
 const EXTENSION_NAME = 'NemoOrchestrator';
 const EXTENSION_PATH = `scripts/extensions/third-party/${EXTENSION_NAME}`;
@@ -85,11 +89,19 @@ async function installInjections(finalInstruction) {
     }
 }
 
-async function runFineWorkflow({ workflow, assertActive }) {
+async function runFineWorkflow({ workflow, assertActive, signal }) {
     workflowEditor?.resetNodeStates();
     return executeWorkflow(workflow, {
         assertActive,
         runGeneration: async (node, prompt) => {
+            if (node.connectionProfile) {
+                return executeProfileGeneration({
+                    profileId: node.connectionProfile,
+                    prompt,
+                    maxTokens: node.maxTokens,
+                    signal,
+                });
+            }
             if (!await applyWorkflowEnvironment(node.environment)) {
                 throw new Error(`${node.name} environment could not be configured.`);
             }
@@ -103,6 +115,7 @@ async function runFineWorkflow({ workflow, assertActive }) {
             assertActive();
         },
         resolveContext: node => resolveWorkflowContext(node),
+        canRunConcurrently: node => Boolean(node.connectionProfile),
         onNodeStart: node => workflowEditor?.setNodeState(node.id, 'running'),
         onNodeComplete: node => workflowEditor?.setNodeState(node.id, 'complete'),
         onNodeError: node => workflowEditor?.setNodeState(node.id, 'error'),
@@ -242,6 +255,7 @@ async function initialize() {
             saveSettingsDebounced();
         },
         resetWorkflow: () => createDefaultWorkflow(settings()),
+        getConnectionProfiles: () => listConnectionProfiles(),
         notify,
     });
     document.getElementById('no_open_workflow')?.addEventListener('click', workflowEditor.open);

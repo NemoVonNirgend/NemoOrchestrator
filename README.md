@@ -19,6 +19,9 @@ Fine Control exposes the generation pipeline as a visual node graph inspired by 
 - Click an output port and then an input port to draw a connection.
 - Branch one result into multiple independent stages.
 - Recombine branches with a Join node.
+- Pull selected SillyTavern data into the graph with Context nodes.
+- Route work through green true and red false Condition branches.
+- Reshape connected results with zero-call Template nodes.
 - Use undo/redo, duplicate nodes, and rename the complete workflow.
 - Configure the prompt and connection environment of each generation stage.
 - Choose whether an individual Generation failure aborts the workflow or continues with an empty result.
@@ -46,6 +49,18 @@ Planner, Explorer, Synthesizer, and Editor stages can be disabled independently.
 
 ## Fine Control Nodes
 
+### Context
+
+A Context node is a root data source and does not make a model call. It can expose:
+
+- the latest user message;
+- the last assistant message;
+- the most recent 1–100 non-system chat messages;
+- the active character card’s maintained descriptive fields;
+- or the active user persona.
+
+Context nodes cannot receive incoming connections. Their output can feed a Template, Condition, Join, Generation, or Output node.
+
 ### Generation
 
 A Generation node calls `/gen` with its configured prompt and the outputs connected to its input.
@@ -55,6 +70,22 @@ A Generation node calls `/gen` with its configured prompt and the outputs connec
 - If a prompt contains neither form, connected material is appended automatically under `# CONNECTED INPUTS`.
 
 A root Generation node has no incoming connection. Its prompt starts the workflow using the current SillyTavern conversation context.
+
+### Template
+
+A Template performs the same `{{INPUTS}}` and `{{node-id}}` substitution as a Generation prompt but returns the rendered text directly. It is useful for reusable headings, intermediate formats, shared instructions, and assembling a payload without paying for another model call.
+
+### Condition
+
+A Condition inspects its connected text and activates either its green **true** connections or red **false** connections. Supported tests include:
+
+- contains or does not contain;
+- equals or does not equal;
+- matches or does not match a regular expression;
+- is empty or is not empty;
+- and optional case sensitivity.
+
+Nodes whose only incoming connections belong to an untaken branch are marked skipped. Their descendants remain skipped until a branch reconverges with an active input.
 
 ### Join
 
@@ -83,6 +114,9 @@ Orchestrator refuses to run a Fine Control graph that contains:
 - an Output with outgoing connections;
 - a cycle;
 - duplicate node identifiers;
+- a Context node with incoming connections;
+- a Condition without an input or branch;
+- an invalid Condition regular expression;
 - a Join without inputs;
 - a non-Join node without a prompt;
 - or a branch that never contributes to Output.

@@ -204,14 +204,13 @@ async function initialize() {
         updateUi();
         notify('info', settings().enabled ? 'Enabled.' : 'Disabled.');
     });
-    document.getElementById('send_but_holder')?.parentElement?.insertBefore(
-        button,
-        document.getElementById('send_but_holder')?.nextSibling,
-    );
+    const rightSendForm = document.getElementById('rightSendForm');
+    const sendButton = document.getElementById('send_but');
+    rightSendForm?.insertBefore(button, sendButton);
 
     updateUi();
     eventSource.makeLast(event_types.USER_MESSAGE_RENDERED, runPipeline);
-    eventSource.on(event_types.chat_id_changed, clearInjections);
+    eventSource.on(event_types.CHAT_CHANGED, clearInjections);
 }
 
 eventSource.on(event_types.APP_READY, initialize);

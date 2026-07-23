@@ -338,3 +338,63 @@ test('Context workflows require a runtime context resolver', async () => {
         /Context node resolver/,
     );
 });
+
+test('profile-backed siblings execute concurrently inside one dependency batch', async () => {
+    const graph = normalizeWorkflow({
+        nodes: [
+            { id: 'context', type: 'context', name: 'Context' },
+            {
+                id: 'left',
+                type: 'generation',
+                name: 'Left',
+                prompt: '{{INPUTS}}',
+                connectionProfile: 'profile-left',
+            },
+            {
+                id: 'right',
+                type: 'generation',
+                name: 'Right',
+                prompt: '{{INPUTS}}',
+                connectionProfile: 'profile-right',
+            },
+            { id: 'join', type: 'join', name: 'Join' },
+            { id: 'output', type: 'output', name: 'Output', prompt: '{{INPUTS}}' },
+        ],
+        edges: [
+            { from: 'context', to: 'left' },
+            { from: 'context', to: 'right' },
+            { from: 'left', to: 'join' },
+            { from: 'right', to: 'join' },
+            { from: 'join', to: 'output' },
+        ],
+    });
+    let release;
+    let signalReady;
+    let started = 0;
+    const ready = new Promise(resolve => {
+        signalReady = resolve;
+    });
+    const gate = new Promise(resolve => {
+        release = resolve;
+    });
+    const execution = executeWorkflow(graph, {
+        resolveContext: async () => 'source',
+        canRunConcurrently: node => Boolean(node.connectionProfile),
+        runGeneration: async node => {
+            started += 1;
+            if (started === 2) signalReady();
+            await gate;
+            return `${node.name} result`;
+        },
+        prepareOutput: async () => {},
+    });
+
+    await ready;
+    assert.equal(started, 2);
+    release();
+    const result = await execution;
+
+    assert.match(result.instruction, /Left result/);
+    assert.match(result.instruction, /Right result/);
+    assert.deepEqual(result.events[1].concurrent, ['left', 'right']);
+});

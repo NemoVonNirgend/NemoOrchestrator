@@ -24,6 +24,10 @@
                     <input id="no_papa_api" class="text_pole" placeholder="API key, e.g. openrouter">
                     <input id="no_papa_model" class="text_pole" placeholder="Model ID">
                 </div>
+                <details>
+                    <summary>Custom Planner prompt</summary>
+                    <textarea id="no_planner_prompt" class="text_pole no-prompt-editor" placeholder="Leave blank to use the modern default."></textarea>
+                </details>
             </div>
 
             <div class="no-stage">
@@ -43,6 +47,14 @@
                         <option value="3">3 rounds / 6 calls</option>
                     </select>
                 </label>
+                <details>
+                    <summary>Custom Character Explorer prompt</summary>
+                    <textarea id="no_character_explorer_prompt" class="text_pole no-prompt-editor" placeholder="Leave blank to use the modern default."></textarea>
+                </details>
+                <details>
+                    <summary>Custom Scene Explorer prompt</summary>
+                    <textarea id="no_scene_explorer_prompt" class="text_pole no-prompt-editor" placeholder="Leave blank to use the modern default."></textarea>
+                </details>
             </div>
 
             <div class="no-stage">
@@ -55,6 +67,10 @@
                     <input id="no_mama_api" class="text_pole" placeholder="API key">
                     <input id="no_mama_model" class="text_pole" placeholder="Model ID">
                 </div>
+                <details>
+                    <summary>Custom Synthesizer prompt</summary>
+                    <textarea id="no_synthesizer_prompt" class="text_pole no-prompt-editor" placeholder="Leave blank to use the modern default. Keep {{BLUEPRINT}} and {{TWIN_DELIBERATIONS}} placeholders."></textarea>
+                </details>
             </div>
 
             <div class="no-stage">
@@ -64,6 +80,10 @@
                     <input id="no_writer_api" class="text_pole" placeholder="API key">
                     <input id="no_writer_model" class="text_pole" placeholder="Model ID">
                 </div>
+                <details>
+                    <summary>Custom Writer prompt</summary>
+                    <textarea id="no_writer_prompt" class="text_pole no-prompt-editor" placeholder="Leave blank to use the default. Keep the {{BLUEPRINT}} placeholder."></textarea>
+                </details>
             </div>
 
             <div class="no-stage">
@@ -76,6 +96,10 @@
                     <input id="no_auditor_api" class="text_pole" placeholder="API key">
                     <input id="no_auditor_model" class="text_pole" placeholder="Model ID">
                 </div>
+                <details>
+                    <summary>Custom Editor prompt</summary>
+                    <textarea id="no_editor_prompt" class="text_pole no-prompt-editor" placeholder="Leave blank to use the default. Keep the {{WRITER_PROSE}} placeholder."></textarea>
+                </details>
             </div>
 
             <small>Leave an API or model blank to keep the current SillyTavern connection for that stage.</small>

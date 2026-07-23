@@ -1,6 +1,30 @@
-export const WORKFLOW_VERSION = 1;
-export const NODE_TYPES = Object.freeze(['generation', 'join', 'output']);
+export const WORKFLOW_VERSION = 2;
+export const NODE_TYPES = Object.freeze([
+    'context',
+    'generation',
+    'template',
+    'condition',
+    'join',
+    'output',
+]);
 export const FAILURE_POLICIES = Object.freeze(['abort', 'continue']);
+export const CONDITION_OPERATORS = Object.freeze([
+    'contains',
+    'not-contains',
+    'equals',
+    'not-equals',
+    'matches',
+    'not-matches',
+    'empty',
+    'not-empty',
+]);
+export const CONTEXT_SOURCES = Object.freeze([
+    'latest-user',
+    'last-assistant',
+    'chat-history',
+    'character-card',
+    'persona',
+]);
 
 function clone(value) {
     if (typeof structuredClone === 'function') return structuredClone(value);
@@ -28,6 +52,20 @@ function normalizeNode(node, index) {
             ? node.failurePolicy
             : 'abort',
         environment: cleanEnvironment(node?.environment),
+        contextSource: CONTEXT_SOURCES.includes(node?.contextSource)
+            ? node.contextSource
+            : 'latest-user',
+        messageLimit: Math.min(
+            100,
+            Math.max(1, Number.parseInt(node?.messageLimit, 10) || 12),
+        ),
+        condition: {
+            operator: CONDITION_OPERATORS.includes(node?.condition?.operator)
+                ? node.condition.operator
+                : 'contains',
+            value: String(node?.condition?.value || ''),
+            caseSensitive: Boolean(node?.condition?.caseSensitive),
+        },
         position: {
             x: Number.isFinite(Number(node?.position?.x)) ? Number(node.position.x) : 80,
             y: Number.isFinite(Number(node?.position?.y)) ? Number(node.position.y) : 80,
@@ -51,7 +89,12 @@ export function normalizeWorkflow(workflow) {
         let id = String(edge?.id || `edge-${index + 1}`);
         while (edgeIds.has(id)) id = `${id}-${index + 1}`;
         edgeIds.add(id);
-        edges.push({ id, from, to });
+        const source = nodes.find(node => node.id === from);
+        const sourceHandle = source?.type === 'condition' &&
+            ['true', 'false'].includes(edge?.sourceHandle)
+            ? edge.sourceHandle
+            : 'out';
+        edges.push({ id, from, to, sourceHandle });
     }
 
     return {
@@ -72,7 +115,7 @@ export function validateWorkflow(workflow) {
         if (ids.has(node.id)) errors.push(`Duplicate node id: ${node.id}`);
         ids.add(node.id);
         if (!node.name.trim()) errors.push(`Node ${node.id} has no name.`);
-        if (node.type !== 'join' && !node.prompt.trim()) {
+        if (['generation', 'template', 'output'].includes(node.type) && !node.prompt.trim()) {
             errors.push(`${node.name} has no prompt.`);
         }
     }
@@ -120,6 +163,40 @@ export function validateWorkflow(workflow) {
     for (const node of graph.nodes) {
         if (node.type === 'join' && !incoming.get(node.id)?.length) {
             errors.push(`${node.name} must receive at least one connection.`);
+        }
+        if (node.type === 'condition') {
+            if (!incoming.get(node.id)?.length) {
+                errors.push(`${node.name} must receive at least one connection.`);
+            }
+            const conditionEdges = graph.edges.filter(edge => edge.from === node.id);
+            if (!conditionEdges.length) {
+                errors.push(`${node.name} must connect a true or false branch.`);
+            }
+            if (conditionEdges.some(edge => !['true', 'false'].includes(edge.sourceHandle))) {
+                errors.push(`${node.name} has an invalid conditional connection.`);
+            }
+            if (
+                !['empty', 'not-empty'].includes(node.condition.operator) &&
+                !node.condition.value
+            ) {
+                errors.push(`${node.name} requires a comparison value.`);
+            }
+            if (
+                ['matches', 'not-matches'].includes(node.condition.operator) &&
+                node.condition.value
+            ) {
+                try {
+                    new RegExp(
+                        node.condition.value,
+                        node.condition.caseSensitive ? '' : 'i',
+                    );
+                } catch {
+                    errors.push(`${node.name} contains an invalid regular expression.`);
+                }
+            }
+        }
+        if (node.type === 'context' && incoming.get(node.id)?.length) {
+            errors.push(`${node.name} is a source and cannot receive connections.`);
         }
     }
 
@@ -183,9 +260,9 @@ export function renderNodePrompt(node, inputs) {
     return prompt;
 }
 
-function incomingValues(graph, nodeId, results) {
+function incomingValues(graph, nodeId, results, edgeActivity) {
     return graph.edges
-        .filter(edge => edge.to === nodeId)
+        .filter(edge => edge.to === nodeId && edgeActivity.get(edge.id) !== false)
         .map(edge => {
             const source = graph.nodes.find(node => node.id === edge.from);
             return {
@@ -194,6 +271,36 @@ function incomingValues(graph, nodeId, results) {
                 value: String(results.get(edge.from) || ''),
             };
         });
+}
+
+export function evaluateCondition(condition, input) {
+    const source = String(input || '');
+    const expected = String(condition?.value || '');
+    const caseSensitive = Boolean(condition?.caseSensitive);
+    const left = caseSensitive ? source : source.toLocaleLowerCase();
+    const right = caseSensitive ? expected : expected.toLocaleLowerCase();
+
+    switch (condition?.operator) {
+        case 'not-contains':
+            return !left.includes(right);
+        case 'equals':
+            return left === right;
+        case 'not-equals':
+            return left !== right;
+        case 'matches':
+        case 'not-matches': {
+            const expression = new RegExp(expected, caseSensitive ? '' : 'i');
+            const matches = expression.test(source);
+            return condition.operator === 'matches' ? matches : !matches;
+        }
+        case 'empty':
+            return !source.trim();
+        case 'not-empty':
+            return Boolean(source.trim());
+        case 'contains':
+        default:
+            return left.includes(right);
+    }
 }
 
 export async function executeWorkflow(workflow, options) {
@@ -205,12 +312,19 @@ export async function executeWorkflow(workflow, options) {
     const graph = validation.workflow;
     const { batches } = buildExecutionBatches(graph);
     const results = new Map();
+    const edgeActivity = new Map();
     const events = [];
     let finalNode = null;
     const runGeneration = options?.runGeneration;
     const prepareOutput = options?.prepareOutput;
     if (typeof runGeneration !== 'function' || typeof prepareOutput !== 'function') {
         throw new Error('Workflow execution requires generation and output handlers.');
+    }
+    if (
+        graph.nodes.some(node => node.type === 'context') &&
+        typeof options?.resolveContext !== 'function'
+    ) {
+        throw new Error('Workflow execution requires a Context node resolver.');
     }
 
     for (const [batchIndex, batch] of batches.entries()) {
@@ -221,13 +335,33 @@ export async function executeWorkflow(workflow, options) {
         for (const nodeId of batch) {
             options?.assertActive?.();
             const node = graph.nodes.find(candidate => candidate.id === nodeId);
-            const inputs = incomingValues(graph, node.id, results);
+            const incomingEdges = graph.edges.filter(edge => edge.to === node.id);
+            const inputs = incomingValues(graph, node.id, results, edgeActivity);
+            const inactive = incomingEdges.length > 0 && inputs.length === 0;
+            const outgoingEdges = graph.edges.filter(edge => edge.from === node.id);
+            if (inactive) {
+                results.set(node.id, '');
+                for (const edge of outgoingEdges) edgeActivity.set(edge.id, false);
+                options?.onNodeSkipped?.(clone(node));
+                continue;
+            }
             options?.onNodeStart?.(clone(node), batchIndex);
 
             try {
-                if (node.type === 'join') {
+                let conditionResult = null;
+                if (node.type === 'context') {
+                    const value = await options?.resolveContext?.(node);
+                    results.set(node.id, String(value || '').trim());
+                } else if (node.type === 'join') {
                     const value = inputs.map(input => input.value).filter(Boolean)
                         .join(node.separator || '\n\n');
+                    results.set(node.id, value);
+                } else if (node.type === 'template') {
+                    results.set(node.id, renderNodePrompt(node, inputs).trim());
+                } else if (node.type === 'condition') {
+                    const value = inputs.map(input => input.value).filter(Boolean)
+                        .join(node.separator || '\n\n');
+                    conditionResult = evaluateCondition(node.condition, value);
                     results.set(node.id, value);
                 } else {
                     const prompt = renderNodePrompt(node, inputs);
@@ -243,11 +377,20 @@ export async function executeWorkflow(workflow, options) {
                         results.set(node.id, String(value).trim());
                     }
                 }
+                for (const edge of outgoingEdges) {
+                    edgeActivity.set(
+                        edge.id,
+                        node.type === 'condition'
+                            ? edge.sourceHandle === String(conditionResult)
+                            : true,
+                    );
+                }
                 options?.onNodeComplete?.(clone(node), results.get(node.id));
             } catch (error) {
                 options?.onNodeError?.(clone(node), error);
                 if (node.failurePolicy !== 'continue' || node.type === 'output') throw error;
                 results.set(node.id, '');
+                for (const edge of outgoingEdges) edgeActivity.set(edge.id, true);
             }
         }
     }
@@ -258,5 +401,6 @@ export async function executeWorkflow(workflow, options) {
         outputNode: finalNode.node,
         results: Object.fromEntries(results),
         events,
+        activeEdges: Object.fromEntries(edgeActivity),
     };
 }

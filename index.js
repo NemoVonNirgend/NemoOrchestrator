@@ -14,6 +14,7 @@ import { normalizeExplorerIterations } from './orchestrator-utils.js';
 import { executeWorkflow, normalizeWorkflow, validateWorkflow } from './workflow-graph.js';
 import { createDefaultWorkflow } from './workflow-defaults.js';
 import { createWorkflowEditor } from './workflow-ui.js';
+import { resolveWorkflowContext } from './workflow-context.js';
 
 const EXTENSION_NAME = 'NemoOrchestrator';
 const EXTENSION_PATH = `scripts/extensions/third-party/${EXTENSION_NAME}`;
@@ -101,9 +102,11 @@ async function runFineWorkflow({ workflow, assertActive }) {
             }
             assertActive();
         },
+        resolveContext: node => resolveWorkflowContext(node),
         onNodeStart: node => workflowEditor?.setNodeState(node.id, 'running'),
         onNodeComplete: node => workflowEditor?.setNodeState(node.id, 'complete'),
         onNodeError: node => workflowEditor?.setNodeState(node.id, 'error'),
+        onNodeSkipped: node => workflowEditor?.setNodeState(node.id, 'skipped'),
     });
 }
 

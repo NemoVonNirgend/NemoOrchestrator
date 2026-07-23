@@ -16,6 +16,8 @@ Every stage can use the current SillyTavern connection or switch to its own pres
 
 The `0.1.x` series is an extraction and compatibility release. Internal setting names retain some Project Gremlin terminology so existing configurations can be migrated safely. Public UI terminology uses the new stage names.
 
+On first load, Nemo Orchestrator copies any existing Project Gremlin stage configuration from `extension_settings.ProsePolisher`. This includes custom prompts, presets, APIs, models, enabled stages, iteration counts, and Writer Chaos options. The source settings are not deleted, and the imported copy is subsequently owned by Nemo Orchestrator.
+
 ## Installation
 
 Install through SillyTavern’s extension installer:

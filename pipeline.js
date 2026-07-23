@@ -52,6 +52,20 @@ export async function applyWriterChaosEnvironment(option) {
     }
 }
 
+export async function applyWorkflowEnvironment(configuration) {
+    try {
+        await applyEnvironment(configuration);
+        return true;
+    } catch (error) {
+        console.error(`${LOG_PREFIX} Failed to configure workflow node environment.`, error);
+        window.toastr.error(
+            `Could not configure the workflow node: ${error.message}`,
+            'Nemo Orchestrator',
+        );
+        return false;
+    }
+}
+
 export async function executeGen(promptText) {
     const context = getContext();
 

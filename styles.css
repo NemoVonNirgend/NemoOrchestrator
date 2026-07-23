@@ -204,6 +204,14 @@ body.no-workflow-open {
     stroke-width: 3;
 }
 
+.no-workflow-edge.is-true {
+    stroke: #59b875;
+}
+
+.no-workflow-edge.is-false {
+    stroke: #c95761;
+}
+
 .no-workflow-node {
     --node-color: #8f78d6;
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, black);
@@ -221,6 +229,18 @@ body.no-workflow-open {
 
 .no-workflow-node.is-join {
     --node-color: #4da5b7;
+}
+
+.no-workflow-node.is-context {
+    --node-color: #b36dc9;
+}
+
+.no-workflow-node.is-template {
+    --node-color: #5ca7d8;
+}
+
+.no-workflow-node.is-condition {
+    --node-color: #d3aa52;
 }
 
 .no-workflow-node.is-output {
@@ -242,6 +262,11 @@ body.no-workflow-open {
 
 .no-workflow-node.is-error {
     border-color: #d75d67;
+}
+
+.no-workflow-node.is-skipped {
+    filter: grayscale(0.65);
+    opacity: 0.58;
 }
 
 @keyframes no-node-pulse {
@@ -306,6 +331,18 @@ body.no-workflow-open {
 
 .no-node-port.is-out {
     right: -0.55rem;
+}
+
+.no-node-port.is-true {
+    background: #59b875;
+    border-color: #a3eab6;
+    top: calc(35% - 0.5rem);
+}
+
+.no-node-port.is-false {
+    background: #c95761;
+    border-color: #f1a2a9;
+    top: calc(70% - 0.5rem);
 }
 
 .no-workflow-inspector {

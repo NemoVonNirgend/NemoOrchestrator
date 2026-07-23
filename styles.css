@@ -1,0 +1,63 @@
+.nemo-orchestrator-settings {
+    --no-accent: #8f78d6;
+}
+
+.nemo-orchestrator-settings .inline-drawer-header {
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.no-status {
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 999px;
+    color: var(--text_color_dim);
+    font-size: 0.75rem;
+    padding: 0.12rem 0.5rem;
+}
+
+.no-status.is-enabled {
+    border-color: var(--no-accent);
+    color: var(--no-accent);
+}
+
+.no-master-toggle {
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 0.6rem;
+    margin: 0.8rem 0;
+    padding: 0.75rem;
+}
+
+.no-stage {
+    border-top: 1px solid var(--SmartThemeBorderColor);
+    display: grid;
+    gap: 0.55rem;
+    padding: 0.9rem 0;
+}
+
+.no-stage details {
+    color: var(--text_color_dim);
+}
+
+.no-prompt-editor {
+    margin-top: 0.45rem;
+    min-height: 9rem;
+    resize: vertical;
+    width: 100%;
+}
+
+.no-connection-grid {
+    display: grid;
+    gap: 0.45rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+#no_toggle.active {
+    color: var(--no-accent);
+    text-shadow: 0 0 0.5rem color-mix(in srgb, var(--no-accent) 70%, transparent);
+}
+
+@media (max-width: 700px) {
+    .no-connection-grid {
+        grid-template-columns: 1fr;
+    }
+}

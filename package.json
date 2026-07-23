@@ -1,0 +1,8 @@
+{
+    "name": "nemo-orchestrator",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "test": "node --import=./test/register-loader.mjs --test test/*.test.js"
+    }
+}

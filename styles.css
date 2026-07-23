@@ -134,6 +134,12 @@ body.no-workflow-open {
     gap: 0.1rem;
 }
 
+.no-workflow-name {
+    font-size: 1rem;
+    font-weight: 700;
+    min-width: min(24rem, 42vw);
+}
+
 .no-workflow-actions {
     display: flex;
     flex-wrap: wrap;
@@ -158,12 +164,27 @@ body.no-workflow-open {
     background-size: 20px 20px, 20px 20px, 100px 100px, 100px 100px;
     min-height: 0;
     overflow: auto;
+    touch-action: none;
+}
+
+.no-workflow-viewport.is-panning {
+    cursor: grabbing;
+    user-select: none;
+}
+
+.no-workflow-stage {
+    height: 1100px;
+    position: relative;
+    width: 2100px;
 }
 
 .no-workflow-surface {
     height: 1100px;
-    min-width: 2100px;
+    left: 0;
     position: relative;
+    top: 0;
+    transform-origin: top left;
+    width: 2100px;
 }
 
 .no-workflow-lines {
@@ -264,6 +285,7 @@ body.no-workflow-open {
     color: var(--text_color_dim);
     font-size: 0.75rem;
     padding: 0.75rem;
+    white-space: pre-line;
 }
 
 .no-node-port {
@@ -337,6 +359,21 @@ body.no-workflow-open {
     border-color: #d75d67;
     color: #ff9ca4;
     margin-top: 0.75rem;
+}
+
+.no-node-actions {
+    display: grid;
+    gap: 0.45rem;
+    grid-template-columns: 1fr 1fr;
+    margin-top: 0.75rem;
+}
+
+.no-node-actions .no-delete-node {
+    margin-top: 0;
+}
+
+.no-zoom-label {
+    min-width: 3.8rem;
 }
 
 .no-workflow-footer {

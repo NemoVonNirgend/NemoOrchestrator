@@ -4,6 +4,34 @@ Nemo Orchestrator is a configurable multi-model narrative pipeline for SillyTave
 
 The extension is disabled by default and does not replace Prose Polisher. Prose Polisher owns repetition analysis and correction rules; Nemo Orchestrator owns planning and staged generation.
 
+## Two Ways to Build
+
+### Simple setup
+
+Simple setup retains the maintained Planner, Creative Explorers, Synthesizer, Writer, and optional Editor configuration. It is the default and requires no graph editing.
+
+### Fine Control
+
+Fine Control exposes the generation pipeline as a visual node graph inspired by visual game-development tools and ComfyUI.
+
+- Drag nodes around the canvas.
+- Click an output port and then an input port to draw a connection.
+- Branch one result into multiple independent stages.
+- Recombine branches with a Join node.
+- Configure the prompt and connection environment of each generation stage.
+- Choose whether an individual Generation failure aborts the workflow or continues with an empty result.
+- Import or export complete workflows as JSON.
+- Reset to the maintained default graph without changing Simple setup.
+
+Fine Control is opt-in. The first time it is selected, Orchestrator creates this editable workflow from the user's existing settings:
+
+```text
+Planner
+├── Character Explorer ─┐
+└── Scene Explorer ─────┴─ Explorer Join
+Planner ──────────────────┴─ Synthesizer → Narrator → Editor / Final Response
+```
+
 ## Pipeline
 
 1. **Planner** establishes the next response’s direction, continuity requirements, and constraints.
@@ -13,6 +41,51 @@ The extension is disabled by default and does not replace Prose Polisher. Prose 
 5. **Editor** optionally revises the Writer draft without changing its events, characterization, point of view, or meaning.
 
 Planner, Explorer, Synthesizer, and Editor stages can be disabled independently. Explorer failures are nonfatal, and Synthesizer failures fall back to the combined source plan and successful Explorer notes.
+
+## Fine Control Nodes
+
+### Generation
+
+A Generation node calls `/gen` with its configured prompt and the outputs connected to its input.
+
+- `{{INPUTS}}` inserts every connected result with a heading naming its source node.
+- `{{node-id}}` inserts the result of one directly connected node.
+- If a prompt contains neither form, connected material is appended automatically under `# CONNECTED INPUTS`.
+
+A root Generation node has no incoming connection. Its prompt starts the workflow using the current SillyTavern conversation context.
+
+### Join
+
+A Join waits for every connected branch and combines their results with its configurable separator. It makes fan-out/fan-in workflows explicit without spending another model call.
+
+### Output
+
+Every valid workflow contains exactly one Output node. It must be terminal and connected. Orchestrator configures that node's environment and injects its completed prompt for SillyTavern's real response generation.
+
+Use a Generation node immediately before Output when a Narrator should draft prose for an Editor. Connect a planning node directly to Output when the normal SillyTavern generation should act as the Narrator.
+
+## Scheduling and Concurrency
+
+Connections define dependencies. Nodes that become ready together are placed in the same execution batch, which records the intended concurrency boundary.
+
+Fine Control currently executes those ready nodes safely in sequence. SillyTavern's active API, preset, model, and custom URL are shared global state, so genuinely simultaneous nodes using different connections could overwrite one another. The workflow format and scheduler preserve parallel batches so isolated concurrent generation can be enabled later without redesigning saved graphs.
+
+This affects latency, not results: sibling nodes still receive the same upstream state and neither receives the other's output.
+
+## Workflow Validation
+
+Orchestrator refuses to run a Fine Control graph that contains:
+
+- no nodes or no Output;
+- more than one Output;
+- an Output with outgoing connections;
+- a cycle;
+- duplicate node identifiers;
+- a Join without inputs;
+- a non-Join node without a prompt;
+- or a branch that never contributes to Output.
+
+The canvas footer reports the first validation issue while editing.
 
 ## Design Principles
 

@@ -34,6 +34,17 @@
     padding: 0.9rem 0;
 }
 
+.no-stage details {
+    color: var(--text_color_dim);
+}
+
+.no-prompt-editor {
+    margin-top: 0.45rem;
+    min-height: 9rem;
+    resize: vertical;
+    width: 100%;
+}
+
 .no-connection-grid {
     display: grid;
     gap: 0.45rem;

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     buildExecutionBatches,
+    evaluateCondition,
     executeWorkflow,
     normalizeWorkflow,
     renderNodePrompt,
@@ -93,6 +94,8 @@ test('normalization removes dangling, self-referential, and duplicate-id edges',
 
     assert.equal(graph.edges.length, 2);
     assert.notEqual(graph.edges[0].id, graph.edges[1].id);
+    assert.equal(graph.version, 2);
+    assert.equal(graph.edges.every(edge => edge.sourceHandle === 'out'), true);
 });
 
 test('validation rejects cycles and ambiguous or disconnected outputs', () => {
@@ -209,4 +212,129 @@ test('abort policy stops before final output', async () => {
         /Required failure/,
     );
     assert.equal(outputPrepared, false);
+});
+
+test('condition evaluation supports text, emptiness, and regular expressions', () => {
+    assert.equal(
+        evaluateCondition({ operator: 'contains', value: 'RED', caseSensitive: false }, 'red flag'),
+        true,
+    );
+    assert.equal(
+        evaluateCondition({ operator: 'not-empty' }, '  content  '),
+        true,
+    );
+    assert.equal(
+        evaluateCondition({ operator: 'matches', value: '^scene \\d+$' }, 'Scene 12'),
+        true,
+    );
+});
+
+test('Context, Template, and Condition nodes route only the active branch', async () => {
+    const graph = normalizeWorkflow({
+        name: 'Conditional context',
+        nodes: [
+            { id: 'context', type: 'context', name: 'Latest user' },
+            {
+                id: 'format',
+                type: 'template',
+                name: 'Reusable wrapper',
+                prompt: 'REQUEST\n{{INPUTS}}',
+            },
+            {
+                id: 'route',
+                type: 'condition',
+                name: 'Urgency route',
+                condition: { operator: 'contains', value: 'urgent' },
+            },
+            {
+                id: 'urgent',
+                type: 'template',
+                name: 'Urgent path',
+                prompt: 'PRIORITIZE\n{{INPUTS}}',
+            },
+            {
+                id: 'normal',
+                type: 'template',
+                name: 'Normal path',
+                prompt: 'NORMAL\n{{INPUTS}}',
+            },
+            { id: 'join', type: 'join', name: 'Route join' },
+            { id: 'output', type: 'output', name: 'Final', prompt: '{{INPUTS}}' },
+        ],
+        edges: [
+            { from: 'context', to: 'format' },
+            { from: 'format', to: 'route' },
+            { from: 'route', to: 'urgent', sourceHandle: 'true' },
+            { from: 'route', to: 'normal', sourceHandle: 'false' },
+            { from: 'urgent', to: 'join' },
+            { from: 'normal', to: 'join' },
+            { from: 'join', to: 'output' },
+        ],
+    });
+    const skipped = [];
+    const result = await executeWorkflow(graph, {
+        resolveContext: async () => 'This is urgent.',
+        runGeneration: async () => {
+            throw new Error('No generation node should run.');
+        },
+        prepareOutput: async () => {},
+        onNodeSkipped: node => skipped.push(node.id),
+    });
+
+    assert.deepEqual(skipped, ['normal']);
+    assert.match(result.results.format, /This is urgent\./);
+    assert.match(result.results.urgent, /PRIORITIZE/);
+    assert.equal(result.results.normal, '');
+    assert.match(result.instruction, /PRIORITIZE/);
+    const falseEdge = graph.edges.find(edge => edge.sourceHandle === 'false');
+    assert.equal(result.activeEdges[falseEdge.id], false);
+});
+
+test('validation rejects invalid conditions and context nodes with inputs', () => {
+    const graph = normalizeWorkflow({
+        nodes: [
+            { id: 'source', type: 'generation', name: 'Source', prompt: 'Start' },
+            {
+                id: 'context',
+                type: 'context',
+                name: 'Invalid context',
+                contextSource: 'latest-user',
+            },
+            {
+                id: 'condition',
+                type: 'condition',
+                name: 'Invalid regex',
+                condition: { operator: 'matches', value: '[' },
+            },
+            { id: 'output', type: 'output', name: 'Output', prompt: '{{INPUTS}}' },
+        ],
+        edges: [
+            { from: 'source', to: 'context' },
+            { from: 'context', to: 'condition' },
+            { from: 'condition', to: 'output', sourceHandle: 'true' },
+        ],
+    });
+    const validation = validateWorkflow(graph);
+
+    assert.equal(validation.valid, false);
+    assert.equal(validation.errors.some(error => error.includes('cannot receive')), true);
+    assert.equal(validation.errors.some(error => error.includes('regular expression')), true);
+});
+
+test('Context workflows require a runtime context resolver', async () => {
+    const graph = normalizeWorkflow({
+        nodes: [
+            { id: 'context', type: 'context', name: 'Context' },
+            { id: 'output', type: 'output', name: 'Output', prompt: '{{INPUTS}}' },
+        ],
+        edges: [{ from: 'context', to: 'output' }],
+    });
+
+    await assert.rejects(
+        executeWorkflow(graph, {
+            runGeneration: async () => 'unused',
+            prepareOutput: async () => {},
+        }),
+        /Context node resolver/,
+    );
 });

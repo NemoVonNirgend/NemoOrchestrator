@@ -19,6 +19,9 @@
 - Template nodes that reshape or label connected material without making another model call.
 - Condition nodes with green true and red false routes, text comparisons, emptiness checks, and regular-expression matching.
 - Inactive-branch propagation so untaken conditional paths are visibly skipped and never spend generation calls.
+- Isolated Connection Manager profile selection and maximum-token controls on Generation nodes.
+- True simultaneous execution for profile-backed sibling Generation nodes in the same dependency batch.
+- Abort propagation from workflow cancellation into active Connection Manager requests.
 
 ### Changed
 
@@ -29,7 +32,7 @@
 
 ### Execution note
 
-- Independent branches are recognized as the same dependency batch. They are currently executed in safe sequence because SillyTavern's active API, preset, model, and custom URL are shared global state. The graph format preserves concurrency boundaries for a future isolated-generation transport.
+- Generation nodes assigned to Connection Manager profiles carry isolated API, model, preset, URL, credentials, and request settings and therefore execute concurrently with profile-backed siblings. Nodes using the legacy/global connection mode remain serialized for safety.
 
 ## 0.1.0
 

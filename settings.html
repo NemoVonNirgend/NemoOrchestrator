@@ -1,0 +1,83 @@
+<div class="nemo-orchestrator-settings">
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b>Nemo Orchestrator</b>
+            <span id="no_status" class="no-status">Pipeline</span>
+            <div class="inline-drawer-icon fa-solid fa-chevron-down down"></div>
+        </div>
+        <div class="inline-drawer-content">
+            <p>Plan, explore, synthesize, write, and optionally edit each response with independently configurable model stages.</p>
+
+            <label class="checkbox_label no-master-toggle">
+                <input type="checkbox" id="no_enabled">
+                <span><b>Enable orchestration</b></span>
+            </label>
+
+            <div class="no-stage">
+                <label class="checkbox_label">
+                    <input type="checkbox" id="no_planner_enabled">
+                    <span><b>1. Planner</b> — establishes the next response’s direction and constraints.</span>
+                </label>
+                <div class="no-connection-grid">
+                    <input id="no_papa_preset" class="text_pole" placeholder="Preset or Default">
+                    <input id="no_papa_api" class="text_pole" placeholder="API key, e.g. openrouter">
+                    <input id="no_papa_model" class="text_pole" placeholder="Model ID">
+                </div>
+            </div>
+
+            <div class="no-stage">
+                <label class="checkbox_label">
+                    <input type="checkbox" id="no_explorers_enabled">
+                    <span><b>2. Creative Explorers</b> — propose character-focused and plot-focused alternatives.</span>
+                </label>
+                <div class="no-connection-grid">
+                    <input id="no_twins_preset" class="text_pole" placeholder="Preset or Default">
+                    <input id="no_twins_api" class="text_pole" placeholder="API key">
+                    <input id="no_twins_model" class="text_pole" placeholder="Model ID">
+                </div>
+                <label>Exploration rounds
+                    <select id="no_explorer_iterations" class="text_pole">
+                        <option value="1">1 round / 2 calls</option>
+                        <option value="2">2 rounds / 4 calls</option>
+                        <option value="3">3 rounds / 6 calls</option>
+                    </select>
+                </label>
+            </div>
+
+            <div class="no-stage">
+                <label class="checkbox_label">
+                    <input type="checkbox" id="no_synthesizer_enabled">
+                    <span><b>3. Synthesizer</b> — selects useful ideas and produces one coherent plan.</span>
+                </label>
+                <div class="no-connection-grid">
+                    <input id="no_mama_preset" class="text_pole" placeholder="Preset or Default">
+                    <input id="no_mama_api" class="text_pole" placeholder="API key">
+                    <input id="no_mama_model" class="text_pole" placeholder="Model ID">
+                </div>
+            </div>
+
+            <div class="no-stage">
+                <div><b>4. Writer</b> — generates the response from the completed plan.</div>
+                <div class="no-connection-grid">
+                    <input id="no_writer_preset" class="text_pole" placeholder="Preset or Default">
+                    <input id="no_writer_api" class="text_pole" placeholder="API key">
+                    <input id="no_writer_model" class="text_pole" placeholder="Model ID">
+                </div>
+            </div>
+
+            <div class="no-stage">
+                <label class="checkbox_label">
+                    <input type="checkbox" id="no_editor_enabled">
+                    <span><b>5. Editor</b> — optionally revises the draft before it is returned.</span>
+                </label>
+                <div class="no-connection-grid">
+                    <input id="no_auditor_preset" class="text_pole" placeholder="Preset or Default">
+                    <input id="no_auditor_api" class="text_pole" placeholder="API key">
+                    <input id="no_auditor_model" class="text_pole" placeholder="Model ID">
+                </div>
+            </div>
+
+            <small>Leave an API or model blank to keep the current SillyTavern connection for that stage.</small>
+        </div>
+    </div>
+</div>

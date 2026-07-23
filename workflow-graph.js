@@ -52,6 +52,11 @@ function normalizeNode(node, index) {
             ? node.failurePolicy
             : 'abort',
         environment: cleanEnvironment(node?.environment),
+        connectionProfile: String(node?.connectionProfile || ''),
+        maxTokens: Math.min(
+            32768,
+            Math.max(128, Number.parseInt(node?.maxTokens, 10) || 2048),
+        ),
         contextSource: CONTEXT_SOURCES.includes(node?.contextSource)
             ? node.contextSource
             : 'latest-user',
@@ -328,11 +333,18 @@ export async function executeWorkflow(workflow, options) {
     }
 
     for (const [batchIndex, batch] of batches.entries()) {
-        events.push({ type: 'batch', index: batchIndex, nodes: [...batch] });
-        // SillyTavern's API, preset, and model are shared global state. Nodes in the
-        // same dependency batch are concurrency-ready, but production execution is
-        // serialized until generation calls can receive isolated environments.
-        for (const nodeId of batch) {
+        const concurrent = batch.filter(nodeId => {
+            const node = graph.nodes.find(candidate => candidate.id === nodeId);
+            return node?.type === 'generation' && options?.canRunConcurrently?.(node);
+        });
+        events.push({
+            type: 'batch',
+            index: batchIndex,
+            nodes: [...batch],
+            concurrent: [...concurrent],
+        });
+
+        async function processNode(nodeId) {
             options?.assertActive?.();
             const node = graph.nodes.find(candidate => candidate.id === nodeId);
             const incomingEdges = graph.edges.filter(edge => edge.to === node.id);
@@ -343,7 +355,7 @@ export async function executeWorkflow(workflow, options) {
                 results.set(node.id, '');
                 for (const edge of outgoingEdges) edgeActivity.set(edge.id, false);
                 options?.onNodeSkipped?.(clone(node));
-                continue;
+                return;
             }
             options?.onNodeStart?.(clone(node), batchIndex);
 
@@ -392,6 +404,17 @@ export async function executeWorkflow(workflow, options) {
                 results.set(node.id, '');
                 for (const edge of outgoingEdges) edgeActivity.set(edge.id, true);
             }
+        }
+
+        // Connection Manager profiles carry their own API, model, preset, URL,
+        // and credentials. Those generation nodes can safely run together.
+        // Legacy nodes still change SillyTavern's global environment and remain
+        // serialized after the isolated group.
+        const concurrentResults = await Promise.allSettled(concurrent.map(processNode));
+        const concurrentFailure = concurrentResults.find(result => result.status === 'rejected');
+        if (concurrentFailure) throw concurrentFailure.reason;
+        for (const nodeId of batch.filter(id => !concurrent.includes(id))) {
+            await processNode(nodeId);
         }
     }
 

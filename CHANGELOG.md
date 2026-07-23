@@ -15,12 +15,17 @@
 - Canvas zoom, cursor-centered wheel zoom, background panning, fit-to-workflow, and reset-view controls.
 - Fifty-step undo/redo history, node duplication, editable workflow names, and keyboard shortcuts.
 - Dependency step badges that identify sibling nodes as parallel-ready.
+- Context nodes for the latest user message, last assistant message, bounded chat history, character card, and user persona.
+- Template nodes that reshape or label connected material without making another model call.
+- Condition nodes with green true and red false routes, text comparisons, emptiness checks, and regular-expression matching.
+- Inactive-branch propagation so untaken conditional paths are visibly skipped and never spend generation calls.
 
 ### Changed
 
 - The existing five-stage configuration remains available as Simple setup and is still the default.
 - Fine Control begins with a maintained Planner → parallel Explorers → Join → Synthesizer → Narrator → Editor graph populated from the user's existing connection and prompt settings.
 - Workflow execution now uses the same transactional connection capture, cancellation, cleanup, and restoration guarantees as Simple setup.
+- Saved version-1 graphs normalize automatically to the version-2 node and edge schema.
 
 ### Execution note
 

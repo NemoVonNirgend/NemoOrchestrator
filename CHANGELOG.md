@@ -12,6 +12,9 @@
 - Versioned workflow persistence with JSON import, export, and maintained-default reset.
 - Graph validation for cycles, duplicate nodes, disconnected branches, missing prompts, and ambiguous outputs.
 - Runtime node states for running, completed, and failed stages.
+- Canvas zoom, cursor-centered wheel zoom, background panning, fit-to-workflow, and reset-view controls.
+- Fifty-step undo/redo history, node duplication, editable workflow names, and keyboard shortcuts.
+- Dependency step badges that identify sibling nodes as parallel-ready.
 
 ### Changed
 

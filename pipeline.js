@@ -6,7 +6,11 @@ import {
     SYNTHESIZER_PROMPT,
 } from './stage-prompts.js';
 import { applyEnvironment } from './environment.js';
-import { fillTemplate, normalizeExplorerIterations } from './orchestrator-utils.js';
+import {
+    fillRequiredTemplate,
+    fillTemplate,
+    normalizeExplorerIterations,
+} from './orchestrator-utils.js';
 
 const EXTENSION_NAME = 'NemoOrchestrator';
 const LOG_PREFIX = '[NemoOrchestrator]';
@@ -100,6 +104,7 @@ export async function runPlanningPipeline(options = {}) {
     const generate = options.generate || executeGen;
     const notify = options.notify || ((level, message, config) =>
         window.toastr[level](message, 'Nemo Orchestrator', config));
+    const logger = options.logger || console;
 
     if (!settings.enabled) return null;
 
@@ -151,7 +156,7 @@ export async function runPlanningPipeline(options = {}) {
                             explorerNotes += `### ${explorer.label}, round ${round}\n${note.trim()}\n\n`;
                         }
                     } catch (error) {
-                        console.warn(`${LOG_PREFIX} ${explorer.label} failed; continuing.`, error);
+                        logger.warn(`${LOG_PREFIX} ${explorer.label} failed; continuing.`, error);
                         notify('warning', `${explorer.label} failed; continuing without that note.`);
                     }
                 }
@@ -169,7 +174,19 @@ export async function runPlanningPipeline(options = {}) {
     }
 
     const synthesizerTemplate = settings.gremlinMamaInstructions?.trim() || SYNTHESIZER_PROMPT;
-    const synthesizerPrompt = fillTemplate(synthesizerTemplate, {
+    let synthesizerPrompt = fillRequiredTemplate(
+        synthesizerTemplate,
+        'BLUEPRINT',
+        blueprint,
+        'SOURCE PLAN',
+    );
+    synthesizerPrompt = fillRequiredTemplate(
+        synthesizerPrompt,
+        'TWIN_DELIBERATIONS',
+        explorerNotes || 'None.',
+        'OPTIONAL EXPLORER NOTES',
+    );
+    synthesizerPrompt = fillTemplate(synthesizerPrompt, {
         BLUEPRINT_SOURCE: blueprintSource,
         BLUEPRINT: blueprint,
         TWIN_DELIBERATIONS: explorerNotes || 'None.',
@@ -183,7 +200,7 @@ export async function runPlanningPipeline(options = {}) {
         }
         return result.trim();
     } catch (error) {
-        console.warn(`${LOG_PREFIX} Synthesizer failed; using the combined plan.`, error);
+        logger.warn(`${LOG_PREFIX} Synthesizer failed; using the combined plan.`, error);
         notify('warning', 'Synthesizer failed; using the combined plan.');
         return fallback;
     }

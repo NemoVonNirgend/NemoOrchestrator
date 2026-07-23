@@ -1,14 +1,38 @@
 import {
     buildExecutionBatches,
+    CONDITION_OPERATORS,
+    CONTEXT_SOURCES,
     NODE_TYPES,
     normalizeWorkflow,
     validateWorkflow,
 } from './workflow-graph.js';
 
 const NODE_LABELS = {
+    context: 'Context',
     generation: 'Generation',
+    template: 'Template',
+    condition: 'Condition',
     join: 'Join',
     output: 'Output',
+};
+
+const CONTEXT_LABELS = {
+    'latest-user': 'Latest user message',
+    'last-assistant': 'Last assistant message',
+    'chat-history': 'Recent chat history',
+    'character-card': 'Character card',
+    persona: 'User persona',
+};
+
+const CONDITION_LABELS = {
+    contains: 'Contains',
+    'not-contains': 'Does not contain',
+    equals: 'Equals',
+    'not-equals': 'Does not equal',
+    matches: 'Matches regular expression',
+    'not-matches': 'Does not match regular expression',
+    empty: 'Is empty',
+    'not-empty': 'Is not empty',
 };
 
 function clone(value) {
@@ -119,14 +143,23 @@ export function createWorkflowEditor({
             id,
             type,
             name: type === 'output' ? 'Final Response' : NODE_LABELS[type],
-            prompt: type === 'join'
+            prompt: ['join', 'context', 'condition'].includes(type)
                 ? ''
                 : type === 'output'
                     ? 'Produce the final response using the connected material.\n\n{{INPUTS}}'
-                    : 'Complete this stage using the connected material.\n\n{{INPUTS}}',
+                    : type === 'template'
+                        ? '# COMBINED MATERIAL\n{{INPUTS}}'
+                        : 'Complete this stage using the connected material.\n\n{{INPUTS}}',
             separator: '\n\n',
             failurePolicy: type === 'generation' ? 'abort' : 'abort',
             environment: { preset: 'Default', api: '', model: '', customUrl: '' },
+            contextSource: 'latest-user',
+            messageLimit: 12,
+            condition: {
+                operator: 'contains',
+                value: '',
+                caseSensitive: false,
+            },
             position: {
                 x: 100 + (positionOffset % 480),
                 y: 100 + (positionOffset % 360),
@@ -152,14 +185,19 @@ export function createWorkflowEditor({
         render();
     }
 
-    function addConnection(from, to) {
+    function addConnection(from, to, sourceHandle = 'out') {
         if (!from || !to || from === to) return;
-        if (graph.edges.some(edge => edge.from === from && edge.to === to)) return;
+        if (graph.edges.some(edge =>
+            edge.from === from &&
+            edge.to === to &&
+            edge.sourceHandle === sourceHandle
+        )) return;
         remember();
         graph.edges.push({
             id: `edge-${Date.now()}-${Math.random().toString(16).slice(2)}`,
             from,
             to,
+            sourceHandle,
         });
         persist();
     }
@@ -171,21 +209,31 @@ export function createWorkflowEditor({
         render();
     }
 
-    function port(node, direction) {
-        const button = makeElement('button', `no-node-port is-${direction}`);
+    function port(node, direction, handle = 'out') {
+        const button = makeElement(
+            'button',
+            `no-node-port is-${direction} is-${handle}`,
+        );
         button.type = 'button';
         button.title = direction === 'out'
-            ? `Connect from ${node.name}`
+            ? `Connect ${handle === 'out' ? 'from' : `${handle} from`} ${node.name}`
             : `Connect into ${node.name}`;
         button.dataset.nodeId = node.id;
         button.dataset.port = direction;
+        button.dataset.handle = handle;
         button.addEventListener('click', event => {
             event.stopPropagation();
             if (direction === 'out') {
-                pendingConnection = pendingConnection === node.id ? null : node.id;
+                const same = pendingConnection?.nodeId === node.id &&
+                    pendingConnection?.handle === handle;
+                pendingConnection = same ? null : { nodeId: node.id, handle };
                 renderNodes();
             } else if (pendingConnection) {
-                addConnection(pendingConnection, node.id);
+                addConnection(
+                    pendingConnection.nodeId,
+                    node.id,
+                    pendingConnection.handle,
+                );
                 pendingConnection = null;
                 render();
             }
@@ -252,11 +300,15 @@ export function createWorkflowEditor({
             card.style.left = `${node.position.x}px`;
             card.style.top = `${node.position.y}px`;
             card.classList.toggle('is-selected', node.id === selectedId);
-            card.classList.toggle('is-connecting', node.id === pendingConnection);
+            card.classList.toggle('is-connecting', node.id === pendingConnection?.nodeId);
             const runtimeState = nodeStates.get(node.id);
             if (runtimeState) card.classList.add(`is-${runtimeState}`);
 
-            if (node.type !== 'output') card.append(port(node, 'out'));
+            if (node.type === 'condition') {
+                card.append(port(node, 'out', 'true'), port(node, 'out', 'false'));
+            } else if (node.type !== 'output') {
+                card.append(port(node, 'out'));
+            }
             card.append(port(node, 'in'));
 
             const header = makeElement('header', 'no-node-header');
@@ -296,7 +348,10 @@ export function createWorkflowEditor({
             const from = surface.querySelector(`[data-node-id="${CSS.escape(edge.from)}"]`);
             const to = surface.querySelector(`[data-node-id="${CSS.escape(edge.to)}"]`);
             if (!from || !to) continue;
-            const fromRect = from.getBoundingClientRect();
+            const sourcePort = from.querySelector(
+                `[data-port="out"][data-handle="${CSS.escape(edge.sourceHandle || 'out')}"]`,
+            );
+            const fromRect = (sourcePort || from).getBoundingClientRect();
             const toRect = to.getBoundingClientRect();
             const x1 = (fromRect.right - surfaceRect.left) / zoom;
             const y1 = (fromRect.top + fromRect.height / 2 - surfaceRect.top) / zoom;
@@ -306,6 +361,9 @@ export function createWorkflowEditor({
             const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             path.setAttribute('d', `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`);
             path.classList.add('no-workflow-edge');
+            if (['true', 'false'].includes(edge.sourceHandle)) {
+                path.classList.add(`is-${edge.sourceHandle}`);
+            }
             path.dataset.edgeId = edge.id;
             svg.append(path);
         }
@@ -317,6 +375,8 @@ export function createWorkflowEditor({
         remember();
         if (key.startsWith('environment.')) {
             node.environment[key.split('.')[1]] = value;
+        } else if (key.startsWith('condition.')) {
+            node.condition[key.split('.')[1]] = value;
         } else {
             node[key] = value;
         }
@@ -367,7 +427,7 @@ export function createWorkflowEditor({
         if (!node) {
             inspector.append(
                 makeElement('h3', '', 'Node settings'),
-                makeElement('p', 'no-workflow-empty', 'Select a node to edit its prompt, model connection, and failure behavior.'),
+                makeElement('p', 'no-workflow-empty', 'Select a node to edit its data source, prompt, routing, or model connection.'),
             );
             return;
         }
@@ -382,7 +442,63 @@ export function createWorkflowEditor({
             }),
         ));
 
-        if (node.type === 'join') {
+        if (node.type === 'context') {
+            inspector.append(field(
+                'Context source',
+                select(
+                    node.contextSource,
+                    CONTEXT_SOURCES.map(source => [source, CONTEXT_LABELS[source]]),
+                    value => {
+                        updateNode('contextSource', value);
+                        renderInspector();
+                    },
+                ),
+            ));
+            if (node.contextSource === 'chat-history') {
+                const limit = input(
+                    node.messageLimit,
+                    value => updateNode(
+                        'messageLimit',
+                        Math.min(100, Math.max(1, Number.parseInt(value, 10) || 12)),
+                    ),
+                );
+                limit.type = 'number';
+                limit.min = '1';
+                limit.max = '100';
+                inspector.append(field('Messages to include', limit));
+            }
+        } else if (node.type === 'condition') {
+            inspector.append(field(
+                'Condition',
+                select(
+                    node.condition.operator,
+                    CONDITION_OPERATORS.map(operator =>
+                        [operator, CONDITION_LABELS[operator]]),
+                    value => {
+                        updateNode('condition.operator', value);
+                        renderInspector();
+                    },
+                ),
+            ));
+            if (!['empty', 'not-empty'].includes(node.condition.operator)) {
+                inspector.append(field(
+                    'Comparison value',
+                    input(node.condition.value, value =>
+                        updateNode('condition.value', value)),
+                ));
+            }
+            const caseSensitive = makeElement('input');
+            caseSensitive.type = 'checkbox';
+            caseSensitive.checked = node.condition.caseSensitive;
+            caseSensitive.addEventListener('change', () =>
+                updateNode('condition.caseSensitive', caseSensitive.checked));
+            inspector.append(field('Case sensitive', caseSensitive));
+            inspector.append(makeElement(
+                'small',
+                '',
+                'Connect the green true port or red false port to route the input.',
+            ));
+        } else if (node.type === 'join') {
             inspector.append(field(
                 'Join separator',
                 input(node.separator, value => updateNode('separator', value)),
@@ -393,31 +509,36 @@ export function createWorkflowEditor({
             prompt.placeholder = 'Use {{INPUTS}} or a connected node token such as {{planner}}.';
             prompt.addEventListener('change', () => updateNode('prompt', prompt.value));
             inspector.append(field('Prompt', prompt));
-            inspector.append(field(
-                'Failure',
-                select(node.failurePolicy, [
-                    ['abort', 'Abort workflow'],
-                    ['continue', 'Continue with empty output'],
-                ], value => updateNode('failurePolicy', value)),
-            ));
-            inspector.append(makeElement('h4', '', 'Connection'));
-            inspector.append(field(
-                'Preset',
-                input(node.environment.preset, value => updateNode('environment.preset', value)),
-            ));
-            inspector.append(field(
-                'API',
-                input(node.environment.api, value => updateNode('environment.api', value)),
-            ));
-            inspector.append(field(
-                'Model',
-                input(node.environment.model, value => updateNode('environment.model', value)),
-            ));
-            inspector.append(field(
-                'Custom URL',
-                input(node.environment.customUrl, value =>
-                    updateNode('environment.customUrl', value)),
-            ));
+            if (['generation', 'output'].includes(node.type)) {
+                inspector.append(field(
+                    'Failure',
+                    select(node.failurePolicy, [
+                        ['abort', 'Abort workflow'],
+                        ['continue', 'Continue with empty output'],
+                    ], value => updateNode('failurePolicy', value)),
+                ));
+                inspector.append(makeElement('h4', '', 'Connection'));
+                inspector.append(field(
+                    'Preset',
+                    input(node.environment.preset, value =>
+                        updateNode('environment.preset', value)),
+                ));
+                inspector.append(field(
+                    'API',
+                    input(node.environment.api, value =>
+                        updateNode('environment.api', value)),
+                ));
+                inspector.append(field(
+                    'Model',
+                    input(node.environment.model, value =>
+                        updateNode('environment.model', value)),
+                ));
+                inspector.append(field(
+                    'Custom URL',
+                    input(node.environment.customUrl, value =>
+                        updateNode('environment.customUrl', value)),
+                ));
+            }
         }
 
         const incoming = graph.edges.filter(edge => edge.to === node.id);
@@ -575,6 +696,9 @@ export function createWorkflowEditor({
                         <button type="button" class="menu_button" data-action="undo" title="Undo">↶</button>
                         <button type="button" class="menu_button" data-action="redo" title="Redo">↷</button>
                         <button type="button" class="menu_button" data-action="add-generation">+ Generation</button>
+                        <button type="button" class="menu_button" data-action="add-context">+ Context</button>
+                        <button type="button" class="menu_button" data-action="add-template">+ Template</button>
+                        <button type="button" class="menu_button" data-action="add-condition">+ Condition</button>
                         <button type="button" class="menu_button" data-action="add-join">+ Join</button>
                         <button type="button" class="menu_button" data-action="add-output">+ Output</button>
                         <button type="button" class="menu_button" data-action="zoom-out" title="Zoom out">−</button>
@@ -619,6 +743,12 @@ export function createWorkflowEditor({
         redoButton.addEventListener('click', redo);
         root.querySelector('[data-action="add-generation"]').addEventListener('click', () =>
             addNode('generation'));
+        root.querySelector('[data-action="add-context"]').addEventListener('click', () =>
+            addNode('context'));
+        root.querySelector('[data-action="add-template"]').addEventListener('click', () =>
+            addNode('template'));
+        root.querySelector('[data-action="add-condition"]').addEventListener('click', () =>
+            addNode('condition'));
         root.querySelector('[data-action="add-join"]').addEventListener('click', () =>
             addNode('join'));
         root.querySelector('[data-action="add-output"]').addEventListener('click', () =>

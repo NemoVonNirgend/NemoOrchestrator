@@ -186,6 +186,12 @@ async function initialize() {
     bindBoolean('no_synthesizer_enabled', 'gremlinMamaEnabled');
     bindBoolean('no_editor_enabled', 'gremlinAuditorEnabled');
     bindValue('no_explorer_iterations', 'gremlinTwinsIterations', value => Number(value));
+    bindValue('no_planner_prompt', 'gremlinPapaInstructions');
+    bindValue('no_character_explorer_prompt', 'gremlinTwinsVexInstructionsBase');
+    bindValue('no_scene_explorer_prompt', 'gremlinTwinsVaxInstructionsBase');
+    bindValue('no_synthesizer_prompt', 'gremlinMamaInstructions');
+    bindValue('no_writer_prompt', 'gremlinWriterInstructionsTemplate');
+    bindValue('no_editor_prompt', 'gremlinAuditorInstructionsTemplate');
     ROLE_KEYS.forEach(bindRole);
 
     const button = document.createElement('button');

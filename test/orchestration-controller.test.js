@@ -10,6 +10,8 @@ function makeSettings(overrides = {}) {
         gremlinWriterChaosOptions: [],
         gremlinWriterInstructionsTemplate: '',
         gremlinAuditorInstructionsTemplate: '',
+        workflowMode: 'simple',
+        visualWorkflow: null,
         ...overrides,
     };
 }
@@ -51,6 +53,10 @@ function makeHarness(overrides = {}) {
             calls.generated.push(prompt);
             return 'Writer draft';
         }),
+        runFineWorkflow: overrides.runFineWorkflow || (async () => ({
+            instruction: 'Fine workflow instruction',
+            outputNode: { name: 'Fine Output' },
+        })),
         notify: (level, message) => calls.notifications.push({ level, message }),
         logger: {
             error: (...args) => calls.logs.push(['error', ...args]),
@@ -78,6 +84,54 @@ test('successful preparation retains the stage environment until generation fini
 
     await controller.finishPipelineGeneration();
     assert.equal(calls.restored.length, 1);
+});
+
+test('Fine Control delegates preparation to the graph workflow', async () => {
+    const settings = makeSettings({
+        workflowMode: 'fine',
+        visualWorkflow: { name: 'Custom graph' },
+    });
+    const workflowCalls = [];
+    const { calls, controller } = makeHarness({
+        settings,
+        runFineWorkflow: async options => {
+            workflowCalls.push(options.workflow);
+            options.assertActive();
+            return {
+                instruction: 'Graph-produced final instruction',
+                outputNode: { name: 'Editorial Output' },
+            };
+        },
+    });
+
+    assert.equal(await controller.runPipeline(), true);
+    assert.deepEqual(workflowCalls, [{ name: 'Custom graph' }]);
+    assert.deepEqual(calls.stages, []);
+    assert.deepEqual(calls.generated, []);
+    assert.deepEqual(calls.installed, ['Graph-produced final instruction']);
+    assert.equal(
+        calls.notifications.some(item =>
+            item.level === 'success' && item.message.includes('Editorial Output')),
+        true,
+    );
+});
+
+test('Fine Control failure restores the original environment', async () => {
+    const settings = makeSettings({ workflowMode: 'fine', visualWorkflow: {} });
+    const { calls, controller, snapshot } = makeHarness({
+        settings,
+        runFineWorkflow: async () => {
+            throw new Error('Graph invalid');
+        },
+    });
+
+    assert.equal(await controller.runPipeline(), false);
+    assert.deepEqual(calls.installed, []);
+    assert.deepEqual(calls.restored, [snapshot]);
+    assert.match(
+        calls.notifications.find(item => item.level === 'error').message,
+        /Graph invalid/,
+    );
 });
 
 test('planning failure clears injections and immediately restores the snapshot', async () => {
